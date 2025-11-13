@@ -53,6 +53,47 @@ def bbox_ioa(box1, box2, eps=1e-7):
     return inter_area / (box2_area + eps)
 
 
+def filter_valid_bboxes(bboxes: List, labels: List, min_area: float = 1.0, min_visibility: float = 0.0):
+    """
+    Filter out invalid bounding boxes (zero area, negative coords, etc.).
+    
+    This prevents Albumentations warnings about division by zero in transforms
+    like Erasing, CoarseDropout, etc.
+    
+    Args:
+        bboxes: List of bboxes in [x1, y1, x2, y2] format
+        labels: List of corresponding labels
+        min_area: Minimum bbox area in pixels (default 1.0)
+        min_visibility: Minimum visibility ratio (0.0-1.0)
+        
+    Returns:
+        filtered_bboxes, filtered_labels
+    """
+    if len(bboxes) == 0:
+        return bboxes, labels
+    
+    valid_indices = []
+    for i, bbox in enumerate(bboxes):
+        x1, y1, x2, y2 = bbox
+        
+        # Check if bbox has valid coordinates
+        if x2 <= x1 or y2 <= y1:
+            continue
+        
+        # Check if bbox has minimum area
+        area = (x2 - x1) * (y2 - y1)
+        if area < min_area:
+            continue
+        
+        valid_indices.append(i)
+    
+    # Return filtered boxes and labels
+    filtered_bboxes = [bboxes[i] for i in valid_indices]
+    filtered_labels = [labels[i] for i in valid_indices]
+    
+    return filtered_bboxes, filtered_labels
+
+
 class LetterBox:
     """
     Resize image and padding for detection while preserving aspect ratio.
@@ -668,7 +709,12 @@ class QueryAugmentation:
             ),
             
             ToTensorV2()
-        ], bbox_params=A.BboxParams(format='pascal_voc', label_fields=['labels']))
+        ], bbox_params=A.BboxParams(
+            format='pascal_voc',
+            label_fields=['labels'],
+            min_area=1.0,  # Filter out bboxes with area < 1 pixel
+            min_visibility=0.0  # Keep boxes even if partially occluded
+        ))
     
     def _get_stage2_transform(self):
         """
@@ -716,7 +762,12 @@ class QueryAugmentation:
             ),
             
             ToTensorV2()
-        ], bbox_params=A.BboxParams(format='pascal_voc', label_fields=['labels']))
+        ], bbox_params=A.BboxParams(
+            format='pascal_voc',
+            label_fields=['labels'],
+            min_area=1.0,  # Filter out bboxes with area < 1 pixel
+            min_visibility=0.0  # Keep boxes even if partially occluded
+        ))
     
     def _get_stage3_transform(self):
         """
@@ -750,7 +801,12 @@ class QueryAugmentation:
             ),
             
             ToTensorV2()
-        ], bbox_params=A.BboxParams(format='pascal_voc', label_fields=['labels']))
+        ], bbox_params=A.BboxParams(
+            format='pascal_voc',
+            label_fields=['labels'],
+            min_area=1.0,  # Filter out bboxes with area < 1 pixel
+            min_visibility=0.0  # Keep boxes even if partially occluded
+        ))
     
     def __call__(
         self,
@@ -802,15 +858,21 @@ class QueryAugmentation:
         
         # Apply standard augmentations
         if len(bboxes) > 0:
+            # Filter out invalid bboxes before passing to Albumentations
+            # This prevents division by zero warnings in Erasing/CoarseDropout
+            bbox_list = bboxes.tolist()
+            label_list = labels.tolist()
+            bbox_list, label_list = filter_valid_bboxes(bbox_list, label_list, min_area=1.0)
+            
             transformed = self.transform(
                 image=image,
-                bboxes=bboxes.tolist(),
-                labels=labels.tolist()
+                bboxes=bbox_list,
+                labels=label_list
             )
             
             aug_image = transformed['image']
-            aug_bboxes = np.array(transformed['bboxes'], dtype=np.float32)
-            aug_labels = np.array(transformed['labels'], dtype=np.int64)
+            aug_bboxes = np.array(transformed['bboxes'], dtype=np.float32) if len(transformed['bboxes']) > 0 else np.zeros((0, 4), dtype=np.float32)
+            aug_labels = np.array(transformed['labels'], dtype=np.int64) if len(transformed['labels']) > 0 else np.zeros((0,), dtype=np.int64)
         else:
             # No bboxes, pass empty arrays to transform (albumentations requires label_fields)
             transformed = self.transform(

@@ -7,6 +7,7 @@ python train.py \
     --epochs 150 \
     --n_way 4 \
     --n_query 8 \
+    --n_aug 5 \
     --n_episodes 200 \
     --use_triplet \
     --triplet_ratio 0.3 \

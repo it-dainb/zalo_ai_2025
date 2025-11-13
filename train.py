@@ -67,6 +67,18 @@ def parse_args():
                         help='Path to test annotations.json (optional)')
     parser.add_argument('--val_st_iou_cache', type=str, default=None,
                         help='Path to validation ST-IoU cache directory (optional, for faster validation)')
+    parser.add_argument('--num_aug', type=int, default=1,
+                        help='Number of augmented versions per image (1-5 recommended, 1=no augmentation multiplier)')
+    
+    # Caching arguments
+    parser.add_argument('--frame_cache_size', type=int, default=500,
+                        help='Number of video frames to cache (default 500 frames ~= 300MB)')
+    parser.add_argument('--support_cache_size_mb', type=int, default=200,
+                        help='Support image cache size in MB (default 200MB)')
+    parser.add_argument('--disable_cache', action='store_true',
+                        help='Disable all caching (useful for debugging memory issues)')
+    parser.add_argument('--print_cache_stats', action='store_true',
+                        help='Print cache statistics after each epoch')
     
     # Training arguments
     parser.add_argument('--stage', type=int, default=2, choices=[1, 2, 3],
@@ -94,7 +106,7 @@ def parse_args():
                         help='Batch size for triplet learning')
     
     # Model arguments
-    parser.add_argument('--yolo_weights', type=str, default='./models/base/yolov8-n.pt',
+    parser.add_argument('--yolo_weights', type=str, default='./models/yolov8-n.pt',
                         help='Path to pretrained YOLOv8n weights')
     parser.add_argument('--dinov3_model', type=str, default='vit_small_patch16_dinov3.lvd1689m',
                         help='DINOv3 model name from timm (e.g., vit_small_patch16_dinov3.lvd1689m)')
@@ -110,6 +122,8 @@ def parse_args():
                         help='Weight decay')
     parser.add_argument('--gradient_accumulation', type=int, default=1,
                         help='Gradient accumulation steps')
+    parser.add_argument('--gradient_clip_norm', type=float, default=1.0,
+                        help='Gradient clipping max norm (0 = no clipping, recommended: 0.5-2.0)')
     
     # Loss arguments
     parser.add_argument('--bbox_weight', type=float, default=7.5,
@@ -176,7 +190,10 @@ def create_dataloaders(args, aug_config):
         data_root=args.data_root,
         annotations_file=args.annotations,
         mode='train',
-        cache_frames=True,
+        cache_frames=not args.disable_cache,
+        num_aug=args.num_aug,
+        frame_cache_size=args.frame_cache_size if not args.disable_cache else 0,
+        support_cache_size_mb=args.support_cache_size_mb if not args.disable_cache else 1,
     )
     
     # Episodic batch sampler
@@ -239,12 +256,16 @@ def create_dataloaders(args, aug_config):
     
     # Validation data loader (optional)
     val_loader = None
+    val_dataset = None
     if Path(args.test_data_root).exists() and Path(args.test_annotations).exists():
         val_dataset = RefDetDataset(
             data_root=args.test_data_root,
             annotations_file=args.test_annotations,
             mode='val',
-            cache_frames=True,
+            cache_frames=not args.disable_cache,
+            num_aug=1,  # No augmentation multiplier for validation
+            frame_cache_size=args.frame_cache_size if not args.disable_cache else 0,
+            support_cache_size_mb=args.support_cache_size_mb if not args.disable_cache else 1,
         )
         
         val_sampler = EpisodicBatchSampler(
@@ -275,7 +296,7 @@ def create_dataloaders(args, aug_config):
     print(f"  N-way: {args.n_way}")
     print(f"  Q-query: {args.n_query}")
     
-    return train_loader, val_loader, triplet_loader
+    return train_loader, val_loader, triplet_loader, train_dataset, val_dataset
 
 
 def create_model(args):
@@ -519,7 +540,7 @@ def main():
     print_stage_config(stage_name)
     
     # Create data loaders
-    train_loader, val_loader, triplet_loader = create_dataloaders(args, aug_config)
+    train_loader, val_loader, triplet_loader, train_dataset, val_dataset = create_dataloaders(args, aug_config)
     
     # Create model
     model = create_model(args)
@@ -542,6 +563,7 @@ def main():
         device=args.device,
         mixed_precision=args.mixed_precision,
         gradient_accumulation_steps=args.gradient_accumulation,
+        gradient_clip_norm=args.gradient_clip_norm,
         checkpoint_dir=args.checkpoint_dir,
         aug_config=aug_config,  # Pass augmentation config
         stage=args.stage,  # Pass training stage
@@ -573,6 +595,16 @@ def main():
     print(f"Final checkpoint saved to: {args.checkpoint_dir}")
     print(f"Best model: {args.checkpoint_dir}/best_model.pt")
     print(f"{'='*70}\n")
+    
+    # Print cache statistics if requested
+    if args.print_cache_stats:
+        print("\n" + "="*70)
+        print("FINAL CACHE STATISTICS")
+        print("="*70)
+        train_dataset.print_cache_stats()
+        if val_dataset is not None:
+            print("\nValidation Dataset Cache:")
+            val_dataset.print_cache_stats()
     
     # Print summary statistics
     print("Training Summary:")

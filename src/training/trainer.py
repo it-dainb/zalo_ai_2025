@@ -52,6 +52,7 @@ class RefDetTrainer:
         device: str = 'cuda',
         mixed_precision: bool = True,
         gradient_accumulation_steps: int = 1,
+        gradient_clip_norm: float = 1.0,
         checkpoint_dir: str = './checkpoints',
         log_interval: int = 10,
         aug_config: Optional[AugmentationConfig] = None,
@@ -68,6 +69,7 @@ class RefDetTrainer:
             device: Device to train on
             mixed_precision: Use automatic mixed precision
             gradient_accumulation_steps: Accumulate gradients over N steps
+            gradient_clip_norm: Gradient clipping max norm (0 = no clipping)
             checkpoint_dir: Directory to save checkpoints
             log_interval: Log every N iterations
             aug_config: Augmentation configuration
@@ -83,6 +85,7 @@ class RefDetTrainer:
         self.device = device
         self.mixed_precision = mixed_precision
         self.gradient_accumulation_steps = gradient_accumulation_steps
+        self.gradient_clip_norm = gradient_clip_norm
         self.checkpoint_dir = Path(checkpoint_dir)
         self.log_interval = log_interval
         self.aug_config = aug_config
@@ -113,6 +116,7 @@ class RefDetTrainer:
         print(f"Device: {device}")
         print(f"Mixed Precision: {mixed_precision}")
         print(f"Gradient Accumulation: {gradient_accumulation_steps}")
+        print(f"Gradient Clipping: {gradient_clip_norm if gradient_clip_norm > 0 else 'Disabled'}")
         print(f"WandB Logging: {self.use_wandb}")
         if self.val_st_iou_cache_dir:
             print(f"ST-IoU Cache: {self.val_st_iou_cache_dir}")
@@ -280,12 +284,27 @@ class RefDetTrainer:
             # Optimizer step (with gradient accumulation)
             if (batch_idx + 1) % self.gradient_accumulation_steps == 0:
                 if self.mixed_precision:
-                    # Unscale gradients before stepping (required for proper inf/nan checks)
+                    # Unscale gradients for gradient clipping
                     self.scaler.unscale_(self.optimizer)
-                    # Step optimizer and update scaler
+                    
+                    # Gradient clipping (if enabled)
+                    if self.gradient_clip_norm > 0:
+                        torch.nn.utils.clip_grad_norm_(
+                            self.model.parameters(), 
+                            max_norm=self.gradient_clip_norm
+                        )
+                    
+                    # Step optimizer (gradients already unscaled)
                     self.scaler.step(self.optimizer)
                     self.scaler.update()
                 else:
+                    # Gradient clipping (if enabled)
+                    if self.gradient_clip_norm > 0:
+                        torch.nn.utils.clip_grad_norm_(
+                            self.model.parameters(), 
+                            max_norm=self.gradient_clip_norm
+                        )
+                    
                     self.optimizer.step()
                 
                 self.optimizer.zero_grad()

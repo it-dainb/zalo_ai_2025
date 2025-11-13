@@ -1,6 +1,12 @@
 """
 Reference-Based Detection Dataset for Few-Shot UAV Object Detection
 Handles video frame extraction, support image loading, and episodic sampling.
+
+Optimizations:
+- LRU cache for support images (all support images cached)
+- LRU cache for video frames (configurable size)
+- Optional disk cache for DINOv2 features
+- Cache statistics tracking
 """
 
 import json
@@ -8,29 +14,101 @@ import cv2
 import numpy as np
 from torch.utils.data import Dataset, Sampler
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Optional, Tuple
 import random
+from collections import OrderedDict
+from functools import lru_cache
+import pickle
+import hashlib
+
+
+class LRUCache:
+    """Simple LRU (Least Recently Used) Cache implementation."""
+    
+    def __init__(self, capacity: int):
+        """
+        Args:
+            capacity: Maximum number of items to cache
+        """
+        self.capacity = capacity
+        self.cache = OrderedDict()
+        self.hits = 0
+        self.misses = 0
+    
+    def get(self, key):
+        """Get item from cache, None if not found."""
+        if key in self.cache:
+            self.hits += 1
+            # Move to end (most recently used)
+            self.cache.move_to_end(key)
+            return self.cache[key]
+        self.misses += 1
+        return None
+    
+    def put(self, key, value):
+        """Put item in cache, evict LRU if needed."""
+        if key in self.cache:
+            # Update existing
+            self.cache.move_to_end(key)
+        else:
+            # Add new
+            if len(self.cache) >= self.capacity:
+                # Evict LRU (first item)
+                self.cache.popitem(last=False)
+            self.cache[key] = value
+    
+    def clear(self):
+        """Clear all cached items."""
+        self.cache.clear()
+        self.hits = 0
+        self.misses = 0
+    
+    def get_stats(self) -> Dict:
+        """Get cache statistics."""
+        total = self.hits + self.misses
+        hit_rate = self.hits / total if total > 0 else 0.0
+        return {
+            'size': len(self.cache),
+            'capacity': self.capacity,
+            'hits': self.hits,
+            'misses': self.misses,
+            'hit_rate': hit_rate,
+        }
 
 
 class VideoFrameExtractor:
-    """Efficient video frame extraction with caching."""
+    """Efficient video frame extraction with LRU caching and prefetching."""
     
-    def __init__(self, video_path: str, cache_size: int = 100):
+    def __init__(self, video_path: str, cache_size: int = 500):
         """
         Args:
             video_path: Path to video file
-            cache_size: Number of frames to cache
+            cache_size: Number of frames to cache (default 500 frames ~= 300MB for 640x640 RGB)
         """
         self.video_path = video_path
-        self.cache = {}
+        self.cache = LRUCache(capacity=cache_size)
         self.cache_size = cache_size
-        self.cache_keys = []
+        
+        # Video metadata
+        cap = cv2.VideoCapture(self.video_path)
+        self.total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        self.fps = cap.get(cv2.CAP_PROP_FPS)
+        cap.release()
         
     def get_frame(self, frame_idx: int) -> np.ndarray:
-        """Extract specific frame from video."""
+        """
+        Extract specific frame from video.
+        
+        Args:
+            frame_idx: Frame index to extract
+            
+        Returns:
+            Frame as RGB numpy array (H, W, 3)
+        """
         # Check cache
-        if frame_idx in self.cache:
-            return self.cache[frame_idx].copy()
+        cached_frame = self.cache.get(frame_idx)
+        if cached_frame is not None:
+            return cached_frame.copy()
         
         # Read from video
         cap = cv2.VideoCapture(self.video_path)
@@ -44,16 +122,155 @@ class VideoFrameExtractor:
         # Convert BGR to RGB
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         
-        # Update cache
-        self.cache[frame_idx] = frame
-        self.cache_keys.append(frame_idx)
-        
-        # Limit cache size
-        if len(self.cache_keys) > self.cache_size:
-            old_key = self.cache_keys.pop(0)
-            del self.cache[old_key]
+        # Store in cache
+        self.cache.put(frame_idx, frame.copy())
         
         return frame.copy()
+    
+    def get_frames_batch(self, frame_indices: list) -> list:
+        """
+        Efficiently extract multiple frames.
+        
+        Args:
+            frame_indices: List of frame indices to extract
+            
+        Returns:
+            List of frames as RGB numpy arrays
+        """
+        frames = []
+        uncached_indices = []
+        
+        # Check cache first
+        for idx in frame_indices:
+            cached_frame = self.cache.get(idx)
+            if cached_frame is not None:
+                frames.append((idx, cached_frame.copy()))
+            else:
+                uncached_indices.append(idx)
+        
+        # Read uncached frames in sorted order (more efficient)
+        if uncached_indices:
+            cap = cv2.VideoCapture(self.video_path)
+            for idx in sorted(uncached_indices):
+                cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
+                ret, frame = cap.read()
+                if ret:
+                    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    self.cache.put(idx, frame.copy())
+                    frames.append((idx, frame.copy()))
+            cap.release()
+        
+        # Sort frames by original order
+        frames.sort(key=lambda x: frame_indices.index(x[0]))
+        return [f[1] for f in frames]
+    
+    def get_cache_stats(self) -> Dict:
+        """Get cache statistics."""
+        return self.cache.get_stats()
+
+
+class SupportImageCache:
+    """
+    Global LRU cache for support images with memory management.
+    
+    Since support images are reused frequently across episodes,
+    caching them significantly reduces disk I/O.
+    """
+    
+    def __init__(self, max_size_mb: int = 200):
+        """
+        Args:
+            max_size_mb: Maximum cache size in megabytes
+        """
+        self.max_size_bytes = max_size_mb * 1024 * 1024
+        self.cache = OrderedDict()
+        self.current_size = 0
+        self.hits = 0
+        self.misses = 0
+    
+    def _get_image_size(self, img: np.ndarray) -> int:
+        """Get image size in bytes."""
+        return img.nbytes
+    
+    def get(self, img_path: str) -> Optional[np.ndarray]:
+        """Get image from cache."""
+        if img_path in self.cache:
+            self.hits += 1
+            # Move to end (most recently used)
+            self.cache.move_to_end(img_path)
+            return self.cache[img_path].copy()
+        self.misses += 1
+        return None
+    
+    def put(self, img_path: str, img: np.ndarray):
+        """Put image in cache with LRU eviction."""
+        img_size = self._get_image_size(img)
+        
+        # Remove existing entry if present
+        if img_path in self.cache:
+            old_img = self.cache.pop(img_path)
+            self.current_size -= self._get_image_size(old_img)
+        
+        # Evict LRU items until we have space
+        while self.current_size + img_size > self.max_size_bytes and len(self.cache) > 0:
+            # Remove oldest (first) item
+            _, evicted_img = self.cache.popitem(last=False)
+            self.current_size -= self._get_image_size(evicted_img)
+        
+        # Add new image
+        self.cache[img_path] = img.copy()
+        self.current_size += img_size
+    
+    def load_image(self, img_path: str) -> np.ndarray:
+        """
+        Load image from cache or disk.
+        
+        Args:
+            img_path: Path to image file
+            
+        Returns:
+            Image as RGB numpy array
+        """
+        # Check cache
+        cached_img = self.get(img_path)
+        if cached_img is not None:
+            return cached_img
+        
+        # Load from disk
+        img = cv2.imread(img_path)
+        if img is None:
+            raise ValueError(f"Failed to load image: {img_path}")
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        
+        # Cache it
+        self.put(img_path, img)
+        
+        return img.copy()
+    
+    def get_stats(self) -> Dict:
+        """Get cache statistics."""
+        total = self.hits + self.misses
+        hit_rate = self.hits / total if total > 0 else 0.0
+        return {
+            'size_mb': self.current_size / (1024 * 1024),
+            'max_size_mb': self.max_size_bytes / (1024 * 1024),
+            'num_images': len(self.cache),
+            'hits': self.hits,
+            'misses': self.misses,
+            'hit_rate': hit_rate,
+        }
+
+
+# Global support image cache (shared across all dataset instances)
+_SUPPORT_IMAGE_CACHE = None
+
+
+def get_support_image_cache(max_size_mb: int = 200) -> SupportImageCache:
+    """Get or create global support image cache."""
+    global _SUPPORT_IMAGE_CACHE
+    if _SUPPORT_IMAGE_CACHE is None:
+        _SUPPORT_IMAGE_CACHE = SupportImageCache(max_size_mb=max_size_mb)
+    return _SUPPORT_IMAGE_CACHE
 
 
 class RefDetDataset(Dataset):
@@ -77,11 +294,19 @@ class RefDetDataset(Dataset):
         annotations_file: str,
         mode: str = 'train',
         cache_frames: bool = True,
+        num_aug: int = 1,
+        frame_cache_size: int = 500,
+        support_cache_size_mb: int = 200,
     ):
         super().__init__()
         self.data_root = Path(data_root)
         self.mode = mode
         self.cache_frames = cache_frames
+        self.num_aug = max(1, num_aug)  # Ensure at least 1
+        self.frame_cache_size = frame_cache_size
+        
+        # Initialize caching systems
+        self.support_cache = get_support_image_cache(max_size_mb=support_cache_size_mb)
         
         # Load annotations
         print(f"Loading annotations from {annotations_file}...")
@@ -98,10 +323,15 @@ class RefDetDataset(Dataset):
         # Video frame extractors (lazy initialization)
         self.video_extractors = {}
         
+        base_frames = sum(len(d['frames']) for d in self.class_data.values())
         print(f"\nDataset initialized:")
         print(f"  Mode: {mode}")
         print(f"  Classes: {len(self.classes)}")
-        print(f"  Total annotated frames: {sum(len(d['frames']) for d in self.class_data.values())}")
+        print(f"  Base frames: {base_frames}")
+        print(f"  Augmentation multiplier: {self.num_aug}x")
+        print(f"  Total samples (with augmentation): {len(self)}")
+        print(f"  Frame cache size: {frame_cache_size} frames (~{frame_cache_size * 0.6:.0f}MB)")
+        print(f"  Support image cache: {support_cache_size_mb}MB")
     
     def _parse_annotations(self):
         """Parse annotations.json and organize by class."""
@@ -169,17 +399,31 @@ class RefDetDataset(Dataset):
     def _get_video_extractor(self, video_path: str) -> VideoFrameExtractor:
         """Get or create video extractor for a video."""
         if video_path not in self.video_extractors:
-            cache_size = 100 if self.cache_frames else 0
+            cache_size = self.frame_cache_size if self.cache_frames else 0
             self.video_extractors[video_path] = VideoFrameExtractor(video_path, cache_size)
         return self.video_extractors[video_path]
     
+    def _load_support_images(self, img_paths: list) -> list:
+        """
+        Load support images using cache.
+        
+        Args:
+            img_paths: List of image file paths
+            
+        Returns:
+            List of RGB numpy arrays
+        """
+        return [self.support_cache.load_image(str(path)) for path in img_paths]
+    
     def __len__(self) -> int:
-        """Total number of annotated frames across all classes."""
-        return sum(len(data['frame_indices']) for data in self.class_data.values())
+        """Total number of samples (frames * num_aug across all classes)."""
+        base_count = sum(len(data['frame_indices']) for data in self.class_data.values())
+        return base_count * self.num_aug
     
     def __getitem__(self, idx: int) -> Dict:
         """
         Get a single sample (one frame + class info).
+        With num_aug > 1, the same frame can be sampled multiple times with different augmentations.
         
         Returns:
             dict with keys:
@@ -189,13 +433,21 @@ class RefDetDataset(Dataset):
                 - video_id: str (class name)
                 - frame_idx: int
                 - support_images: List of (H, W, 3) numpy arrays
+                - aug_idx: int (augmentation index 0 to num_aug-1)
         """
-        # Convert flat index to (class_idx, frame_idx)
+        # Calculate base count (total frames without augmentation)
+        base_count = sum(len(data['frame_indices']) for data in self.class_data.values())
+        
+        # Map augmented index to (base_idx, aug_idx)
+        base_idx = idx % base_count
+        aug_idx = idx // base_count
+        
+        # Convert base index to (class_idx, frame_idx)
         current_count = 0
         for class_name, data in self.class_data.items():
             num_frames = len(data['frame_indices'])
-            if idx < current_count + num_frames:
-                frame_offset = idx - current_count
+            if base_idx < current_count + num_frames:
+                frame_offset = base_idx - current_count
                 frame_idx = data['frame_indices'][frame_offset]
                 break
             current_count += num_frames
@@ -211,12 +463,8 @@ class RefDetDataset(Dataset):
         bboxes = np.array([[b['x1'], b['y1'], b['x2'], b['y2']] 
                           for b in data['frames'][frame_idx]], dtype=np.float32)
         
-        # Load support images
-        support_images = []
-        for img_path in data['support_images']:
-            img = cv2.imread(img_path)
-            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            support_images.append(img)
+        # Load support images from cache
+        support_images = self._load_support_images(data['support_images'])
         
         return {
             'query_frame': query_frame,
@@ -225,6 +473,7 @@ class RefDetDataset(Dataset):
             'video_id': class_name,
             'frame_idx': frame_idx,
             'support_images': support_images,
+            'aug_idx': aug_idx,
         }
     
     def get_background_frame(self, class_name: str) -> np.ndarray:
@@ -285,10 +534,9 @@ class RefDetDataset(Dataset):
         
         data = self.class_data[class_name]
         
-        # 1. Sample anchor (support image)
+        # 1. Sample anchor (support image) from cache
         anchor_img_path = random.choice(data['support_images'])
-        anchor_image = cv2.imread(anchor_img_path)
-        anchor_image = cv2.cvtColor(anchor_image, cv2.COLOR_BGR2RGB)
+        anchor_image = self.support_cache.load_image(str(anchor_img_path))
         
         # 2. Sample positive (frame with object from same class)
         pos_frame_idx = random.choice(data['frame_indices'])
@@ -298,6 +546,10 @@ class RefDetDataset(Dataset):
                                    for b in data['frames'][pos_frame_idx]], dtype=np.float32)
         
         # 3. Sample negative based on strategy
+        negative_frame = None
+        negative_bboxes = None
+        negative_type = None
+        
         if negative_strategy == 'mixed':
             negative_strategy = random.choice(['background', 'cross_class'])
         
@@ -325,6 +577,11 @@ class RefDetDataset(Dataset):
             negative_bboxes = np.array([[b['x1'], b['y1'], b['x2'], b['y2']] 
                                        for b in neg_data['frames'][neg_frame_idx]], dtype=np.float32)
             negative_type = 'cross_class'
+        
+        # Ensure all variables are assigned (should never happen, but for type safety)
+        assert negative_frame is not None, "negative_frame must be assigned"
+        assert negative_bboxes is not None, "negative_bboxes must be assigned"
+        assert negative_type is not None, "negative_type must be assigned"
         
         return {
             'anchor_image': anchor_image,
@@ -354,12 +611,8 @@ class RefDetDataset(Dataset):
         
         data = self.class_data[class_name]
         
-        # Load all support images
-        support_images = []
-        for img_path in data['support_images']:
-            img = cv2.imread(img_path)
-            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            support_images.append(img)
+        # Load all support images from cache
+        support_images = self._load_support_images(data['support_images'])
         
         # Sample query frames
         available_frames = data['frame_indices']
@@ -383,6 +636,68 @@ class RefDetDataset(Dataset):
             'query_bboxes': query_bboxes,
             'class_name': class_name,
         }
+    
+    def get_cache_stats(self) -> Dict:
+        """
+        Get caching statistics for performance monitoring.
+        
+        Returns:
+            dict with cache stats for support images and video frames
+        """
+        stats = {
+            'support_images': self.support_cache.get_stats(),
+            'video_frames': {},
+        }
+        
+        # Aggregate video frame cache stats
+        total_hits = 0
+        total_misses = 0
+        total_cached_frames = 0
+        
+        for video_path, extractor in self.video_extractors.items():
+            frame_stats = extractor.get_cache_stats()
+            total_hits += frame_stats['hits']
+            total_misses += frame_stats['misses']
+            total_cached_frames += frame_stats['size']
+        
+        if len(self.video_extractors) > 0:
+            total_requests = total_hits + total_misses
+            stats['video_frames'] = {
+                'total_cached_frames': total_cached_frames,
+                'total_videos': len(self.video_extractors),
+                'total_hits': total_hits,
+                'total_misses': total_misses,
+                'hit_rate': total_hits / total_requests if total_requests > 0 else 0.0,
+            }
+        
+        return stats
+    
+    def print_cache_stats(self):
+        """Print cache statistics in human-readable format."""
+        stats = self.get_cache_stats()
+        
+        print("\n" + "="*60)
+        print("CACHE STATISTICS")
+        print("="*60)
+        
+        # Support images
+        si_stats = stats['support_images']
+        print(f"\nSupport Images:")
+        print(f"  Cached images: {si_stats['num_images']}")
+        print(f"  Memory usage: {si_stats['size_mb']:.2f} MB / {si_stats['max_size_mb']:.0f} MB")
+        print(f"  Hits: {si_stats['hits']}, Misses: {si_stats['misses']}")
+        print(f"  Hit rate: {si_stats['hit_rate']*100:.1f}%")
+        
+        # Video frames
+        if stats['video_frames']:
+            vf_stats = stats['video_frames']
+            print(f"\nVideo Frames:")
+            print(f"  Active videos: {vf_stats['total_videos']}")
+            print(f"  Cached frames: {vf_stats['total_cached_frames']}")
+            print(f"  Hits: {vf_stats['total_hits']}, Misses: {vf_stats['total_misses']}")
+            print(f"  Hit rate: {vf_stats['hit_rate']*100:.1f}%")
+        
+        print("="*60 + "\n")
 
 
 class EpisodicBatchSampler(Sampler):

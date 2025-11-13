@@ -1,0 +1,29 @@
+python train.py \
+    --data_root ./datasets/train/samples \
+    --annotations ./datasets/train/annotations/annotations.json \
+    --test_data_root ./datasets/test/samples \
+    --test_annotations ./datasets/test/annotations/annotations.json \
+    --stage 3 \
+    --epochs 50 \
+    --n_way 4 \
+    --n_query 8 \
+    --n_episodes 150 \
+    --use_triplet \
+    --triplet_ratio 0.5 \
+    --negative_strategy mixed \
+    --triplet_batch_size 16 \
+    --lr 3e-5 \
+    --weight_decay 0.05 \
+    --gradient_accumulation 1 \
+    --mixed_precision \
+    --num_workers 8 \
+    --checkpoint_dir ./checkpoints/stage3 \
+    --save_interval 5 \
+    --bbox_weight 7.5 \
+    --cls_weight 0.5 \
+    --dfl_weight 1.5 \
+    --supcon_weight 0.4 \
+    --cpe_weight 0.2 \
+    --triplet_weight 0.6 \
+    --resume ./checkpoints/stage2/best_model.pt \
+    --val_st_iou_cache

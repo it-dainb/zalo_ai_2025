@@ -1,0 +1,11 @@
+__pycache__/
+.benchmarks/
+.pytest_cache/
+*.pyc
+*.pyo
+*.pyd
+datasets/
+raw/
+*.zip
+models/
+*.pt

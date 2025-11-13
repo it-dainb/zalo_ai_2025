@@ -1,0 +1,31 @@
+python train.py \
+    --data_root ./datasets/train/samples \
+    --annotations ./datasets/train/annotations/annotations.json \
+    --test_data_root ./datasets/test/samples \
+    --test_annotations ./datasets/test/annotations/annotations.json \
+    --stage 2 \
+    --epochs 150 \
+    --n_way 4 \
+    --n_query 8 \
+    --n_episodes 200 \
+    --use_triplet \
+    --triplet_ratio 0.3 \
+    --negative_strategy mixed \
+    --triplet_batch_size 16 \
+    --lr 1e-4 \
+    --weight_decay 0.05 \
+    --gradient_accumulation 1 \
+    --mixed_precision \
+    --num_workers 8 \
+    --checkpoint_dir ./checkpoints/stage2 \
+    --save_interval 5 \
+    --bbox_weight 7.5 \
+    --cls_weight 0.5 \
+    --dfl_weight 1.5 \
+    --supcon_weight 1.2 \
+    --cpe_weight 0.6 \
+    --triplet_weight 0.3 \
+    --yolo_weights ./models/base/yolov8-n.pt \
+    --dinov3_model vit_small_patch16_dinov3.lvd1689m \
+    --freeze_dinov3 \
+    --val_st_iou_cache

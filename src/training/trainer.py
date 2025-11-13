@@ -55,6 +55,7 @@ class RefDetTrainer:
         gradient_clip_norm: float = 1.0,
         checkpoint_dir: str = './checkpoints',
         log_interval: int = 10,
+        wandb_log_interval: Optional[int] = None,
         aug_config: Optional[AugmentationConfig] = None,
         stage: int = 2,
         use_wandb: bool = False,
@@ -71,7 +72,8 @@ class RefDetTrainer:
             gradient_accumulation_steps: Accumulate gradients over N steps
             gradient_clip_norm: Gradient clipping max norm (0 = no clipping)
             checkpoint_dir: Directory to save checkpoints
-            log_interval: Log every N iterations
+            log_interval: Log every N iterations (for progress bar)
+            wandb_log_interval: Log to wandb every N steps (None = only log per epoch)
             aug_config: Augmentation configuration
             stage: Training stage (1, 2, or 3)
             use_wandb: Enable Weights & Biases logging
@@ -88,6 +90,7 @@ class RefDetTrainer:
         self.gradient_clip_norm = gradient_clip_norm
         self.checkpoint_dir = Path(checkpoint_dir)
         self.log_interval = log_interval
+        self.wandb_log_interval = wandb_log_interval
         self.aug_config = aug_config
         self.stage = stage
         self.use_wandb = use_wandb and WANDB_AVAILABLE
@@ -295,17 +298,7 @@ class RefDetTrainer:
                                 mode='dual',
                                 use_cache=True,
                             )
-                            print(f"🔍 DEBUG: Model outputs keys: {list(model_outputs.keys())}")
-                            if 'pred_bboxes' in model_outputs:
-                                print(f"   pred_bboxes shape: {model_outputs['pred_bboxes'].shape}")
-                                print(f"   pred_bboxes numel: {model_outputs['pred_bboxes'].numel()}")
-                            if 'pred_scores' in model_outputs:
-                                print(f"   pred_scores shape: {model_outputs['pred_scores'].shape}")
-                                if model_outputs['pred_scores'].numel() > 0:
-                                    print(f"   pred_scores stats: min={model_outputs['pred_scores'].min():.4f}, max={model_outputs['pred_scores'].max():.4f}")
-                            print(f"   target_bboxes: {len(batch_to_use['target_bboxes'])} samples")
-                            for i, tb in enumerate(batch_to_use['target_bboxes'][:2]):  # Show first 2
-                                print(f"     Sample {i}: {len(tb)} boxes")
+
                     
                     loss, losses_dict = self._forward_step(batch_to_use)
                     
@@ -337,16 +330,7 @@ class RefDetTrainer:
                 else:
                     loss.backward()
                 
-                # DEBUG: Check if ANY gradients were created
-                if batch_idx == 0:
-                    grads_present = sum(1 for n, p in self.model.named_parameters() if p.requires_grad and p.grad is not None and p.grad.abs().sum() > 0)
-                    grads_total = sum(1 for n, p in self.model.named_parameters() if p.requires_grad)
-                    print(f"🔍 DEBUG batch {batch_idx}: {grads_present}/{grads_total} parameters have non-zero gradients")
-                    if grads_present == 0:
-                        print(f"❌ ERROR: NO GRADIENTS! Loss requires_grad={loss.requires_grad}")
-                        print(f"   Loss components: {losses_dict}")
-                        for k, v in losses_dict.items():
-                            print(f"     {k}: {v}")
+
                 
                 # Check for NaN/Inf in gradients
                 has_nan_grad = False
@@ -396,6 +380,19 @@ class RefDetTrainer:
                     
                     self.optimizer.zero_grad()
                     self.global_step += 1
+                    
+                    # Per-step wandb logging (if enabled)
+                    if self.use_wandb and self.wandb_log_interval is not None:
+                        if self.global_step % self.wandb_log_interval == 0:
+                            current_lr = self.optimizer.param_groups[0]['lr']
+                            step_log = {
+                                'train_step/loss': loss.item() * self.gradient_accumulation_steps,
+                                'train_step/learning_rate': current_lr,
+                            }
+                            # Log individual loss components
+                            for key, value in losses_dict.items():
+                                step_log[f'train_step/{key}'] = value
+                            wandb.log(step_log, step=self.global_step)
                     
                     # Learning rate scheduling
                     if self.scheduler is not None:
@@ -731,30 +728,12 @@ class RefDetTrainer:
             class_ids=batch.get('class_ids', None),  # Pass class IDs for episodic learning
         )
         
-        # DEBUG: Check raw model outputs
-        if self.epoch == 1 and not hasattr(self, '_debug_printed'):
-            print(f"\n🔍 DEBUG: Raw model outputs")
-            for k, v in model_outputs.items():
-                if isinstance(v, torch.Tensor):
-                    print(f"   {k}: shape={v.shape}, numel={v.numel()}")
-                    if v.numel() > 0 and v.dtype in [torch.float16, torch.float32, torch.float64]:
-                        print(f"      min={v.min().item():.4f}, max={v.max().item():.4f}, mean={v.mean().item():.4f}")
-            self._debug_printed = True
-        
         # Prepare loss inputs
         loss_inputs = prepare_loss_inputs(
             model_outputs=model_outputs,
             batch=batch,
             stage=self.loss_fn.stage,
         )
-        
-        # DEBUG: Check loss inputs after matching
-        if self.epoch == 1 and not hasattr(self, '_debug_loss_inputs_printed'):
-            print(f"\n🔍 DEBUG: Loss inputs after matching")
-            print(f"   pred_bboxes: shape={loss_inputs['pred_bboxes'].shape}")
-            print(f"   target_bboxes: shape={loss_inputs['target_bboxes'].shape}")
-            print(f"   Number of targets in batch: {[len(t) for t in batch['target_bboxes'][:3]]}")
-            self._debug_loss_inputs_printed = True
         
         # Compute loss
         losses = self.loss_fn(**loss_inputs)

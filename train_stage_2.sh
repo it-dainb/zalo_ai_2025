@@ -7,12 +7,12 @@ python train.py \
     --epochs 150 \
     --n_way 4 \
     --n_query 8 \
-    --n_aug 5 \
+    --num_aug 5 \
     --n_episodes 200 \
     --use_triplet \
     --triplet_ratio 0.3 \
     --negative_strategy mixed \
-    --triplet_batch_size 16 \
+    --triplet_batch_size 32 \
     --lr 1e-4 \
     --weight_decay 0.05 \
     --gradient_accumulation 1 \
@@ -26,11 +26,11 @@ python train.py \
     --supcon_weight 1.2 \
     --cpe_weight 0.6 \
     --triplet_weight 0.3 \
-    --yolo_weights ./models/yolov8-n.pt \
+    --yolo_weights ./models/base/yolov8-n.pt \
     --dinov3_model vit_small_patch16_dinov3.lvd1689m \
     --freeze_dinov3 \
     --use_wandb \
     --wandb_project ZALO \
     --wandb_entity it-dainb \
-    --wandb_name test_1 \
-    --val_st_iou_cache
+    --wandb_name stage_2 \
+    --val_st_iou_cache  ./datasets/test/annotations/

@@ -554,6 +554,13 @@ def main():
     # Create scheduler
     scheduler = create_scheduler(args, optimizer, train_loader)
     
+    # Calculate wandb logging interval (log every 1% of steps per epoch)
+    wandb_log_interval = None
+    if args.use_wandb:
+        # Log every 1% of steps, minimum 1 step
+        wandb_log_interval = max(1, len(train_loader) // 100)
+        print(f"\nWandb logging: Every {wandb_log_interval} steps (~1% of {len(train_loader)} total steps per epoch)")
+    
     # Create trainer
     trainer = RefDetTrainer(
         model=model,
@@ -565,6 +572,7 @@ def main():
         gradient_accumulation_steps=args.gradient_accumulation,
         gradient_clip_norm=args.gradient_clip_norm,
         checkpoint_dir=args.checkpoint_dir,
+        wandb_log_interval=wandb_log_interval,  # Per-step wandb logging interval
         aug_config=aug_config,  # Pass augmentation config
         stage=args.stage,  # Pass training stage
         use_wandb=args.use_wandb,  # Enable wandb logging

@@ -7,12 +7,12 @@ python train.py \
     --epochs 50 \
     --n_way 4 \
     --n_query 8 \
-    --n_aug 5 \
+    --num_aug 5 \
     --n_episodes 150 \
     --use_triplet \
     --triplet_ratio 0.5 \
     --negative_strategy mixed \
-    --triplet_batch_size 16 \
+    --triplet_batch_size 32 \
     --lr 3e-5 \
     --weight_decay 0.05 \
     --gradient_accumulation 1 \
@@ -30,5 +30,5 @@ python train.py \
     --use_wandb \
     --wandb_project ZALO \
     --wandb_entity it-dainb \
-    --wandb_name test_1 \
-    --val_st_iou_cache
+    --wandb_name stage_3 \
+    --val_st_iou_cache  ./datasets/test/annotations/

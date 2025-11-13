@@ -207,8 +207,7 @@ class YOLOv8nRefDet(nn.Module):
                 support_feats = self.support_encoder(support_images)
                 self._cached_support_features = support_feats
         
-        num_images = support_images[0].shape[0] if isinstance(support_images, list) else support_images.shape[0]
-        print(f"✓ Cached support features for {num_images} reference image(s)")
+        # Caching complete (removed verbose logging)
     
     def clear_cache(self):
         """Clear cached support features."""

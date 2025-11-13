@@ -47,7 +47,7 @@ class AugmentationConfig:
     query_mixup_alpha: float = 0.1  # Beta distribution parameter for MixUp
     
     # Support augmentation (reference images) - DINOv3 encoding
-    support_img_size: int = 256  # DINOv3 ViT-S/14 with reg4 tokens
+    support_img_size: int = 256  # DINOv3 compatible (must be divisible by 16)
     support_mode: str = "weak"  # "weak" (training) or "strong" (contrastive learning)
     
     # Temporal consistency (video sequences)
@@ -142,62 +142,7 @@ def get_stage_config(stage: str = "stage1") -> AugmentationConfig:
         return AugmentationConfig(
             # Image sizes
             query_img_size=640,
-            support_img_size=518,  # DINOv2 optimal size with reg4
-            
-            # Query augmentation - STRONG (Ultralytics + AlbumentationsX)
-            query_mosaic_prob=1.0,  # Ultralytics Mosaic: +5-7% mAP
-            query_mixup_prob=0.15,  # Ultralytics MixUp
-            query_mixup_alpha=0.1,
-            
-            # Support augmentation - WEAK (AlbumentationsX)
-            support_mode="weak",  # Preserve semantic content for DINOv2
-            
-            # Geometric - AGGRESSIVE (AlbumentationsX)
-            flip_horizontal=0.5,
-            flip_vertical=0.5,
-            rotate_90=0.5,  # D4 group augmentation
-            affine_scale=(0.8, 1.2),
-            affine_rotate=(-15, 15),
-            affine_translate=(-0.1, 0.1),
-            affine_shear=(-5, 5),
-            
-            # Photometric - STRONG (AlbumentationsX)
-            hsv_hue=(-15, 15),
-            hsv_saturation=(-30, 30),
-            hsv_value=(-30, 30),
-            brightness=(-0.3, 0.3),
-            contrast=(0.7, 1.3),
-            planckian_jitter_prob=0.3,  # NEW: Realistic lighting
-            planckian_temp_range=(3000, 15000),
-            
-            # Blur and noise - MODERATE (AlbumentationsX)
-            blur_prob=0.2,
-            advanced_blur_prob=0.2,  # NEW: Motion/defocus/glass blur
-            advanced_blur_limit=(3, 7),
-            noise_prob=0.2,
-            noise_std_range=(0.1, 0.3),
-            
-            # Erasing - MODERATE (AlbumentationsX)
-            erasing_prob=0.3,  # NEW: Random erasing
-            erasing_scale=(0.01, 0.1),
-            erasing_ratio=(0.3, 3.3),
-            
-            # Temporal consistency
-            temporal_consistency_window=8,
-            video_frame_stride=1,
-            video_sequence_length=8,
-            video_sequence_overlap=4,
-            
-            # Feature space augmentation
-            feature_noise_std=0.1,
-            feature_dropout=0.1,
-        )
-    
-    elif stage == "stage2":
-        return AugmentationConfig(
-            # Image sizes
-            query_img_size=640,
-            support_img_size=518,  # DINOv2 optimal size
+            support_img_size=512,  # DINOv3 compatible size (divisible by 16)
             
             # Query augmentation - MEDIUM (Reduced for episodic learning)
             query_mosaic_prob=0.5,  # Reduce mosaic (conflicts with episodic sampling)
@@ -252,7 +197,7 @@ def get_stage_config(stage: str = "stage1") -> AugmentationConfig:
         return AugmentationConfig(
             # Image sizes
             query_img_size=640,
-            support_img_size=518,  # DINOv2 optimal size
+            support_img_size=512,  # DINOv3 compatible size (divisible by 16)
             
             # Query augmentation - WEAK (Minimal for fine-tuning)
             query_mosaic_prob=0.3,  # Light mosaic

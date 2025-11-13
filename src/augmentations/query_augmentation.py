@@ -661,6 +661,12 @@ class QueryAugmentation:
                 p=0.3
             ),
             
+            # Normalize to ImageNet stats (required for YOLOv8 backbone)
+            A.Normalize(
+                mean=[0.485, 0.456, 0.406],
+                std=[0.229, 0.224, 0.225]
+            ),
+            
             ToTensorV2()
         ], bbox_params=A.BboxParams(format='pascal_voc', label_fields=['labels']))
     
@@ -703,6 +709,12 @@ class QueryAugmentation:
             # Light blur
             A.AdvancedBlur(blur_limit=(3, 5), p=0.1),
             
+            # Normalize to ImageNet stats (required for YOLOv8 backbone)
+            A.Normalize(
+                mean=[0.485, 0.456, 0.406],
+                std=[0.229, 0.224, 0.225]
+            ),
+            
             ToTensorV2()
         ], bbox_params=A.BboxParams(format='pascal_voc', label_fields=['labels']))
     
@@ -729,6 +741,12 @@ class QueryAugmentation:
                 brightness_limit=0.15,
                 contrast_limit=0.15,
                 p=0.2
+            ),
+            
+            # Normalize to ImageNet stats (required for YOLOv8 backbone)
+            A.Normalize(
+                mean=[0.485, 0.456, 0.406],
+                std=[0.229, 0.224, 0.225]
             ),
             
             ToTensorV2()

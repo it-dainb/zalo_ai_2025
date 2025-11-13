@@ -94,14 +94,15 @@ class ReferenceBasedDetectionLoss(nn.Module):
                 'triplet': 0.0
             }
         elif stage == 2:
-            # Stage 2: Few-shot meta-learning (full contrastive, no triplet yet)
+            # Stage 2: Few-shot meta-learning (full contrastive, optional triplet)
+            # Triplet loss can be enabled to prevent catastrophic forgetting
             return {
                 'bbox': bbox_w,
                 'cls': cls_w,
                 'dfl': dfl_w,
                 'supcon': supcon_w,
                 'cpe': cpe_w,
-                'triplet': 0.0
+                'triplet': triplet_w  # Use provided triplet weight (0.0 if not using triplet)
             }
         else:  # stage == 3
             # Stage 3: Fine-tuning (reduced contrastive, add triplet)

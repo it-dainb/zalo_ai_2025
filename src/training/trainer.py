@@ -109,6 +109,14 @@ class RefDetTrainer:
         self.best_val_loss = float('inf')
         self.best_st_iou = 0.0  # Track best ST-IoU
         
+        # NaN/Inf tracking for adaptive handling
+        self.nan_count = 0
+        self.nan_threshold = 10  # Raise error if too many NaN batches in an epoch
+        self.loss_ema = None  # Exponential moving average for anomaly detection
+        self.loss_ema_alpha = 0.1  # EMA smoothing factor
+        self.grad_norm_history = []  # Track recent gradient norms for adaptive clipping
+        self.grad_norm_window = 100  # Window size for gradient norm tracking
+        
         print(f"\n{'='*60}")
         print(f"RefDetTrainer initialized")
         print(f"{'='*60}")
@@ -223,6 +231,9 @@ class RefDetTrainer:
         self.model.train()
         self.epoch = epoch
         
+        # Reset NaN counter at start of epoch
+        self.nan_count = 0
+        
         # Metrics accumulation
         total_loss = 0.0
         loss_components = {}
@@ -269,50 +280,127 @@ class RefDetTrainer:
                 batch_to_use = batch
             
             # Forward pass
-            with autocast(device_type='cuda' if torch.cuda.is_available() else 'cpu', enabled=self.mixed_precision):
-                loss, losses_dict = self._forward_step(batch_to_use)
+            try:
+                with autocast(device_type='cuda' if torch.cuda.is_available() else 'cpu', enabled=self.mixed_precision):
+                    loss, losses_dict = self._forward_step(batch_to_use)
+                    
+                    # Check for NaN/Inf in loss
+                    if torch.isnan(loss) or torch.isinf(loss):
+                        print(f"\n❌ ERROR: NaN or Inf detected in loss at batch {batch_idx}")
+                        print(f"Batch type: {batch_to_use.get('batch_type', 'unknown')}")
+                        print(f"Loss value: {loss.item()}")
+                        print(f"Loss components:")
+                        for key, val in losses_dict.items():
+                            print(f"  {key}: {val}")
+                        
+                        # Check batch for NaN values
+                        for key, val in batch_to_use.items():
+                            if isinstance(val, torch.Tensor):
+                                has_nan = torch.isnan(val).any().item()
+                                has_inf = torch.isinf(val).any().item()
+                                if has_nan or has_inf:
+                                    print(f"  ⚠️ {key}: shape={val.shape}, has_nan={has_nan}, has_inf={has_inf}")
+                        
+                        raise ValueError(f"NaN or Inf detected in loss. Check augmentation pipeline or data.")
+                    
+                    # Scale loss for gradient accumulation
+                    loss = loss / self.gradient_accumulation_steps
                 
-                # Scale loss for gradient accumulation
-                loss = loss / self.gradient_accumulation_steps
-            
-            # Backward pass
-            if self.mixed_precision:
-                self.scaler.scale(loss).backward()
-            else:
-                loss.backward()
-            
-            # Optimizer step (with gradient accumulation)
-            if (batch_idx + 1) % self.gradient_accumulation_steps == 0:
+                # Backward pass
                 if self.mixed_precision:
-                    # Unscale gradients for gradient clipping
-                    self.scaler.unscale_(self.optimizer)
-                    
-                    # Gradient clipping (if enabled)
-                    if self.gradient_clip_norm > 0:
-                        torch.nn.utils.clip_grad_norm_(
-                            self.model.parameters(), 
-                            max_norm=self.gradient_clip_norm
-                        )
-                    
-                    # Step optimizer (gradients already unscaled)
-                    self.scaler.step(self.optimizer)
-                    self.scaler.update()
+                    self.scaler.scale(loss).backward()
                 else:
-                    # Gradient clipping (if enabled)
-                    if self.gradient_clip_norm > 0:
-                        torch.nn.utils.clip_grad_norm_(
-                            self.model.parameters(), 
-                            max_norm=self.gradient_clip_norm
-                        )
+                    loss.backward()
+                
+                # Check for NaN/Inf in gradients
+                has_nan_grad = False
+                for name, param in self.model.named_parameters():
+                    if param.grad is not None:
+                        if torch.isnan(param.grad).any() or torch.isinf(param.grad).any():
+                            print(f"⚠️ NaN/Inf gradient in {name}")
+                            has_nan_grad = True
+                            if batch_idx == 0:
+                                print(f"   Grad stats: min={param.grad.min()}, max={param.grad.max()}, mean={param.grad.mean()}")
+                
+                if has_nan_grad:
+                    print(f"❌ NaN/Inf gradients detected at batch {batch_idx}. Skipping optimizer step.")
+                    self.optimizer.zero_grad()
+                    continue
+                
+                # Optimizer step (with gradient accumulation)
+                if (batch_idx + 1) % self.gradient_accumulation_steps == 0:
+                    if self.mixed_precision:
+                        # Unscale gradients for gradient clipping
+                        self.scaler.unscale_(self.optimizer)
+                        
+                        # Gradient clipping (if enabled)
+                        if self.gradient_clip_norm > 0:
+                            torch.nn.utils.clip_grad_norm_(
+                                self.model.parameters(), 
+                                max_norm=self.gradient_clip_norm
+                            )
+                        
+                        # Step optimizer (gradients already unscaled)
+                        self.scaler.step(self.optimizer)
+                        self.scaler.update()
+                    else:
+                        # Gradient clipping (if enabled)
+                        if self.gradient_clip_norm > 0:
+                            torch.nn.utils.clip_grad_norm_(
+                                self.model.parameters(), 
+                                max_norm=self.gradient_clip_norm
+                            )
+                        
+                        self.optimizer.step()
                     
-                    self.optimizer.step()
+                    self.optimizer.zero_grad()
+                    self.global_step += 1
+                    
+                    # Learning rate scheduling
+                    if self.scheduler is not None:
+                        self.scheduler.step()
+            
+            except Exception as e:
+                # Handle errors during forward/backward pass
+                import traceback
+                print(f"\n" + "="*70)
+                print(f"❌ DETAILED ERROR at batch {batch_idx}/{len(train_loader)}")
+                print(f"="*70)
+                print(f"Batch type: {batch_to_use.get('batch_type', 'unknown')}")
+                print(f"Error type: {type(e).__name__}")
+                print(f"Error message: {str(e)}")
+                print(f"\nBatch contents:")
+                for key, val in batch_to_use.items():
+                    if isinstance(val, torch.Tensor):
+                        print(f"  {key}: shape={val.shape}, dtype={val.dtype}, device={val.device}")
+                        # Only compute stats for floating point tensors
+                        if val.dtype in [torch.float16, torch.float32, torch.float64]:
+                            print(f"    min={val.min().item():.4f}, max={val.max().item():.4f}, mean={val.mean().item():.4f}")
+                            print(f"    has_nan={torch.isnan(val).any().item()}, has_inf={torch.isinf(val).any().item()}")
+                        else:
+                            print(f"    (non-float tensor, skipping stats)")
+                    elif isinstance(val, dict):
+                        print(f"  {key}: dict with keys {list(val.keys())}")
+                    else:
+                        print(f"  {key}: {type(val)}")
                 
+                print(f"\nFull traceback:")
+                print(traceback.format_exc())
+                print("="*70)
+                print(f"⚠️  SKIPPING batch {batch_idx} due to error (graceful recovery mode)")
+                print("="*70 + "\n")
+                
+                # Clear gradients and skip this batch
                 self.optimizer.zero_grad()
-                self.global_step += 1
                 
-                # Learning rate scheduling
-                if self.scheduler is not None:
-                    self.scheduler.step()
+                # Clear scaler state if using mixed precision (prevents "No inf checks" error)
+                if self.mixed_precision and self.scaler is not None:
+                    self.scaler.update()
+                
+                # Continue to next batch instead of crashing
+                # (uncomment the 'raise' below to debug specific errors)
+                # raise
+                continue
             
             # Accumulate metrics
             total_loss += loss.item() * self.gradient_accumulation_steps

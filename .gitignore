@@ -9,3 +9,4 @@ datasets/train/
 raw/
 *.zip
 *.pt
+ultralytics/

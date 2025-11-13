@@ -78,7 +78,7 @@ class StandardDetectionHead(nn.Module):
             nn.Sequential(
                 Conv(x, c2, 3, padding=1),
                 Conv(c2, c2, 3, padding=1),
-                nn.Conv2d(c2, 4 * self.reg_max, 1)
+                nn.Conv2d(c2, 4 * (self.reg_max + 1), 1)
             ) for x in ch
         )
         
@@ -159,7 +159,7 @@ class PrototypeDetectionHead(nn.Module):
             nn.Sequential(
                 Conv(x, c2, 3, padding=1),
                 Conv(c2, c2, 3, padding=1),
-                nn.Conv2d(c2, 4 * self.reg_max, 1)
+                nn.Conv2d(c2, 4 * (self.reg_max + 1), 1)
             ) for x in ch
         )
         

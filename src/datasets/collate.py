@@ -143,7 +143,8 @@ class RefDetCollator:
                 target_classes.append(aug_labels.long())
             else:
                 target_classes.append(torch.from_numpy(aug_labels).long())
-            class_ids.append(class_id)
+            # Store episodic class ID [0, N-1] for indexing prototypes
+            class_ids.append(episodic_class_id)
             video_ids.append(sample['video_id'])
         
         # Stack query images

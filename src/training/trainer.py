@@ -282,6 +282,31 @@ class RefDetTrainer:
             # Forward pass
             try:
                 with autocast(device_type='cuda' if torch.cuda.is_available() else 'cpu', enabled=self.mixed_precision):
+                    # DEBUG: Check model outputs before loss computation
+                    if batch_idx == 0:
+                        # Get model outputs directly to debug
+                        if batch_to_use['batch_type'] == 'detection':
+                            support_images = batch_to_use['support_images']
+                            N, K, C, H, W = support_images.shape
+                            support_flat = support_images.reshape(N * K, C, H, W)
+                            self.model.set_reference_images(support_flat, average_prototypes=True)
+                            model_outputs = self.model(
+                                query_image=batch_to_use['query_images'],
+                                mode='dual',
+                                use_cache=True,
+                            )
+                            print(f"🔍 DEBUG: Model outputs keys: {list(model_outputs.keys())}")
+                            if 'pred_bboxes' in model_outputs:
+                                print(f"   pred_bboxes shape: {model_outputs['pred_bboxes'].shape}")
+                                print(f"   pred_bboxes numel: {model_outputs['pred_bboxes'].numel()}")
+                            if 'pred_scores' in model_outputs:
+                                print(f"   pred_scores shape: {model_outputs['pred_scores'].shape}")
+                                if model_outputs['pred_scores'].numel() > 0:
+                                    print(f"   pred_scores stats: min={model_outputs['pred_scores'].min():.4f}, max={model_outputs['pred_scores'].max():.4f}")
+                            print(f"   target_bboxes: {len(batch_to_use['target_bboxes'])} samples")
+                            for i, tb in enumerate(batch_to_use['target_bboxes'][:2]):  # Show first 2
+                                print(f"     Sample {i}: {len(tb)} boxes")
+                    
                     loss, losses_dict = self._forward_step(batch_to_use)
                     
                     # Check for NaN/Inf in loss
@@ -312,6 +337,17 @@ class RefDetTrainer:
                 else:
                     loss.backward()
                 
+                # DEBUG: Check if ANY gradients were created
+                if batch_idx == 0:
+                    grads_present = sum(1 for n, p in self.model.named_parameters() if p.requires_grad and p.grad is not None and p.grad.abs().sum() > 0)
+                    grads_total = sum(1 for n, p in self.model.named_parameters() if p.requires_grad)
+                    print(f"🔍 DEBUG batch {batch_idx}: {grads_present}/{grads_total} parameters have non-zero gradients")
+                    if grads_present == 0:
+                        print(f"❌ ERROR: NO GRADIENTS! Loss requires_grad={loss.requires_grad}")
+                        print(f"   Loss components: {losses_dict}")
+                        for k, v in losses_dict.items():
+                            print(f"     {k}: {v}")
+                
                 # Check for NaN/Inf in gradients
                 has_nan_grad = False
                 for name, param in self.model.named_parameters():
@@ -325,6 +361,11 @@ class RefDetTrainer:
                 if has_nan_grad:
                     print(f"❌ NaN/Inf gradients detected at batch {batch_idx}. Skipping optimizer step.")
                     self.optimizer.zero_grad()
+                    
+                    # Reset scaler state if using mixed precision
+                    if self.mixed_precision and self.scaler is not None:
+                        self.scaler = GradScaler(enabled=True)
+                    
                     continue
                 
                 # Optimizer step (with gradient accumulation)
@@ -393,9 +434,11 @@ class RefDetTrainer:
                 # Clear gradients and skip this batch
                 self.optimizer.zero_grad()
                 
-                # Clear scaler state if using mixed precision (prevents "No inf checks" error)
+                # Reset scaler state if using mixed precision (prevents "No inf checks" error)
                 if self.mixed_precision and self.scaler is not None:
-                    self.scaler.update()
+                    # Create a new scaler instance to reset state completely
+                    # This avoids the "No inf checks were recorded" error
+                    self.scaler = GradScaler(enabled=True)
                 
                 # Continue to next batch instead of crashing
                 # (uncomment the 'raise' below to debug specific errors)
@@ -664,23 +707,39 @@ class RefDetTrainer:
     def _forward_detection_step(self, batch: Dict) -> tuple:
         """Forward step for standard detection batch."""
         # Prepare support images
-        # support_images shape: (N_classes, K_shots, 3, 256, 256)
+        # support_images shape: (N_classes, K_shots, 3, H, W)
         support_images = batch['support_images']
         N, K, C, H, W = support_images.shape
         
-        # Average support images to get class prototypes
-        # Reshape to (N*K, 3, 256, 256) for batch processing
+        # For episodic learning with N classes and K support images per class
+        # Reshape to (N*K, 3, H, W) for batch processing
         support_flat = support_images.reshape(N * K, C, H, W)
         
-        # Cache support features (compute once per episode)
-        self.model.set_reference_images(support_flat, average_prototypes=True)
+        # Cache support features: compute N class prototypes (average K images per class)
+        self.model.set_reference_images(
+            support_flat,
+            average_prototypes=True,
+            n_way=N,
+            n_support=K
+        )
         
         # Forward pass with query images
         model_outputs = self.model(
             query_image=batch['query_images'],
             mode='dual',  # Use dual head (base + novel)
             use_cache=True,  # Use cached support features
+            class_ids=batch.get('class_ids', None),  # Pass class IDs for episodic learning
         )
+        
+        # DEBUG: Check raw model outputs
+        if self.epoch == 1 and not hasattr(self, '_debug_printed'):
+            print(f"\n🔍 DEBUG: Raw model outputs")
+            for k, v in model_outputs.items():
+                if isinstance(v, torch.Tensor):
+                    print(f"   {k}: shape={v.shape}, numel={v.numel()}")
+                    if v.numel() > 0 and v.dtype in [torch.float16, torch.float32, torch.float64]:
+                        print(f"      min={v.min().item():.4f}, max={v.max().item():.4f}, mean={v.mean().item():.4f}")
+            self._debug_printed = True
         
         # Prepare loss inputs
         loss_inputs = prepare_loss_inputs(
@@ -688,6 +747,14 @@ class RefDetTrainer:
             batch=batch,
             stage=self.loss_fn.stage,
         )
+        
+        # DEBUG: Check loss inputs after matching
+        if self.epoch == 1 and not hasattr(self, '_debug_loss_inputs_printed'):
+            print(f"\n🔍 DEBUG: Loss inputs after matching")
+            print(f"   pred_bboxes: shape={loss_inputs['pred_bboxes'].shape}")
+            print(f"   target_bboxes: shape={loss_inputs['target_bboxes'].shape}")
+            print(f"   Number of targets in batch: {[len(t) for t in batch['target_bboxes'][:3]]}")
+            self._debug_loss_inputs_printed = True
         
         # Compute loss
         losses = self.loss_fn(**loss_inputs)

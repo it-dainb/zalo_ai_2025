@@ -147,37 +147,64 @@ class YOLOv8nRefDet(nn.Module):
     def set_reference_images(
         self, 
         support_images: torch.Tensor,
-        average_prototypes: bool = True
+        average_prototypes: bool = True,
+        n_way: int = None,
+        n_support: int = None,
     ):
         """
         Pre-compute and cache support features from reference images.
-        Useful for inference optimization.
+        Useful for inference optimization and episodic learning.
         
         Args:
             support_images: Reference images
                 - Single: (1, 3, 256, 256)
-                - Multiple: (K, 3, 256, 256) or List of (1, 3, 256, 256) for averaging
+                - Multiple: (K, 3, 256, 256) or (N*K, 3, 256, 256) for episodic learning
             average_prototypes: If True and multiple images, average prototypes
+            n_way: Number of classes (for episodic learning)
+            n_support: Number of support images per class (for episodic learning)
         """
         with torch.no_grad():
-            if isinstance(support_images, list) and average_prototypes:
-                # Average multiple reference images (list format)
+            # Episodic learning: N classes with K support images each
+            if n_way is not None and n_support is not None and average_prototypes:
+                # support_images shape: (N*K, 3, H, W)
+                # We need to compute N prototypes (one per class)
+                all_class_prototypes = []
+                for class_idx in range(n_way):
+                    # Extract K support images for this class
+                    start_idx = class_idx * n_support
+                    end_idx = start_idx + n_support
+                    class_support = support_images[start_idx:end_idx]  # (K, 3, H, W)
+                    
+                    # Average K support images to get one prototype
+                    support_list = [class_support[k:k+1] for k in range(n_support)]
+                    class_proto = self.support_encoder.compute_average_prototype(support_list)
+                    all_class_prototypes.append(class_proto)
+                
+                # Stack N class prototypes: {scale: (N, dim)}
+                support_feats = {
+                    scale: torch.cat([proto[scale] for proto in all_class_prototypes], dim=0)
+                    for scale in all_class_prototypes[0].keys()
+                }
+                self._cached_support_features = support_feats
+                
+            elif isinstance(support_images, list) and average_prototypes:
+                # Average multiple reference images (list format) - single class
                 support_feats = self.support_encoder.compute_average_prototype(support_images)
+                self._cached_support_features = {
+                    scale: feat[:1] if feat.shape[0] > 1 else feat
+                    for scale, feat in support_feats.items()
+                }
             elif isinstance(support_images, torch.Tensor) and support_images.shape[0] > 1 and average_prototypes:
-                # Average multiple reference images (tensor format)
+                # Average multiple reference images (tensor format) - single class
                 support_list = [support_images[i:i+1] for i in range(support_images.shape[0])]
                 support_feats = self.support_encoder.compute_average_prototype(support_list)
-            else:
-                # Single reference or no averaging
-                support_feats = self.support_encoder(support_images)
-            
-            # Ensure cached features have batch=1 for easier expansion later
-            if isinstance(support_feats, dict):
                 self._cached_support_features = {
                     scale: feat[:1] if feat.shape[0] > 1 else feat
                     for scale, feat in support_feats.items()
                 }
             else:
+                # Single reference or no averaging
+                support_feats = self.support_encoder(support_images)
                 self._cached_support_features = support_feats
         
         num_images = support_images[0].shape[0] if isinstance(support_images, list) else support_images.shape[0]
@@ -227,6 +254,7 @@ class YOLOv8nRefDet(nn.Module):
         mode: str = 'dual',
         use_cache: bool = True,
         return_features: bool = False,
+        class_ids: Optional[torch.Tensor] = None,
     ) -> Dict[str, torch.Tensor]:
         """
         Forward pass through complete model.
@@ -249,18 +277,38 @@ class YOLOv8nRefDet(nn.Module):
         
         # Step 2: Get support features (from cache or compute)
         support_features = None
+        support_features_for_head = None  # Keep original N prototypes for detection head
+        
         if mode in ['prototype', 'dual']:
             if use_cache and self._cached_support_features is not None:
                 # Use cached support features
-                support_features = self._cached_support_features
+                support_features_original = self._cached_support_features
                 
-                # Expand support features to match query batch size
+                # Determine how to expand for fusion
                 batch_size = query_image.shape[0]
-                if batch_size > 1:
+                first_scale = list(support_features_original.keys())[0]
+                num_prototypes = support_features_original[first_scale].shape[0]
+                
+                if num_prototypes == 1 and batch_size > 1:
+                    # Single prototype: expand to match batch size
                     support_features = {
                         scale: feat.expand(batch_size, -1)
-                        for scale, feat in support_features.items()
+                        for scale, feat in support_features_original.items()
                     }
+                    support_features_for_head = support_features
+                elif num_prototypes > 1 and class_ids is not None:
+                    # N-way episodic learning:
+                    # - For fusion: select prototype for each query (B, dim)
+                    # - For detection head: keep all N prototypes (N, dim)
+                    support_features = {
+                        scale: feat[class_ids]  # (N, dim) -> (B, dim) via indexing
+                        for scale, feat in support_features_original.items()
+                    }
+                    support_features_for_head = support_features_original  # Keep (N, dim)
+                else:
+                    # Multiple prototypes without class_ids - keep as (N, dim) for both
+                    support_features = support_features_original
+                    support_features_for_head = support_features_original
             elif support_images is not None:
                 # Compute support features on-the-fly
                 # If support_images has multiple samples (K > 1), decide whether to average
@@ -278,6 +326,7 @@ class YOLOv8nRefDet(nn.Module):
                             scale: feat.expand(batch_size, -1)
                             for scale, feat in support_features.items()
                         }
+                    support_features_for_head = support_features
                 else:
                     # Single support image OR triplet loss: process directly without averaging
                     support_features = self.support_encoder(support_images, return_global_feat=return_features)
@@ -291,6 +340,7 @@ class YOLOv8nRefDet(nn.Module):
                                 scale: feat.expand(batch_size, -1)
                                 for scale, feat in support_features.items()
                             }
+                    support_features_for_head = support_features
             else:
                 raise ValueError(
                     f"Mode '{mode}' requires support images or cached features. "
@@ -299,6 +349,7 @@ class YOLOv8nRefDet(nn.Module):
         
         # Step 3: Fuse query and support features
         # Always pass through fusion to get correct output channels [256, 512, 512]
+        # In N-way episodic mode: support_features is (B, dim) expanded for fusion
         # In standard mode, pass None for support_features (fusion will skip correlation)
         if mode in ['prototype', 'dual']:
             fused_features = self.scs_fusion(query_features, support_features)
@@ -308,15 +359,18 @@ class YOLOv8nRefDet(nn.Module):
         
         # Step 4: Detection head
         # Prepare prototypes for detection head (use scale-specific features)
+        # Use support_features_for_head to preserve N-way prototypes for episodic learning
         prototypes = None
-        if support_features is not None:
+        if support_features_for_head is not None:
             # Use scale-specific prototypes for better multi-scale detection
+            # For episodic learning: (N, dim) where N = num_classes
+            # For single prototype: (B, dim) where B = batch_size
             # Scale-specific dimensions [P2:32, P3:64, P4:128, P5:256] match proto_dims
             prototypes = {
-                'p2': support_features['p2'],  # (B, 32) NEW for UAV small objects
-                'p3': support_features['p3'],  # (B, 64)
-                'p4': support_features['p4'],  # (B, 128)
-                'p5': support_features['p5'],  # (B, 256)
+                'p2': support_features_for_head['p2'],
+                'p3': support_features_for_head['p3'],
+                'p4': support_features_for_head['p4'],
+                'p5': support_features_for_head['p5'],
             }
         
         detections = self.detection_head(fused_features, prototypes, mode=mode)

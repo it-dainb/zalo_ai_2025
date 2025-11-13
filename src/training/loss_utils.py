@@ -1,11 +1,226 @@
 """
 Training utilities for loss computation.
 Handles target matching, feature extraction, and loss input preparation.
+
+IMPORTANT: Now uses ANCHOR-BASED TARGET ASSIGNMENT (YOLOv8-style) to work
+directly with raw detection head outputs without confidence filtering.
 """
 
 import torch
 import torch.nn.functional as F
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional
+
+from src.losses.dfl_loss import DFLoss
+
+
+def dist2bbox(distance: torch.Tensor, anchor_points: torch.Tensor, xywh: bool = True, dim: int = -1) -> torch.Tensor:
+    """
+    Transform distance(ltrb) to box(xywh or xyxy).
+    
+    Args:
+        distance: (N, 4) distances [left, top, right, bottom] from anchor points
+        anchor_points: (N, 2) anchor center points [x, y]
+        xywh: If True, return xywh format; else return xyxy format
+        dim: Dimension to split on
+    
+    Returns:
+        boxes: (N, 4) boxes in xywh or xyxy format
+    """
+    lt, rb = distance.chunk(2, dim)
+    x1y1 = anchor_points - lt
+    x2y2 = anchor_points + rb
+    if xywh:
+        c_xy = (x1y1 + x2y2) / 2
+        wh = x2y2 - x1y1
+        return torch.cat([c_xy, wh], dim)  # xywh bbox
+    return torch.cat((x1y1, x2y2), dim)  # xyxy bbox
+
+
+def assign_targets_to_anchors(
+    proto_boxes_list: List[torch.Tensor],  # [(B, 4*reg_max, H, W), ...] for each scale
+    proto_sim_list: List[torch.Tensor],     # [(B, K, H, W), ...] for each scale
+    target_bboxes: List[torch.Tensor],      # List of (N_i, 4) boxes per image
+    target_classes: List[torch.Tensor],     # List of (N_i,) classes per image
+    img_size: int = 640,
+    reg_max: int = 16,
+    strides: List[int] = [4, 8, 16, 32],
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    """
+    Assign ground truth targets to anchor points using center-based assignment.
+    
+    This is a simplified version of YOLOv8's TAL (Task-Aligned Assigner).
+    For each GT box, we assign it to anchors whose center falls within the GT box.
+    
+    Args:
+        proto_boxes_list: Raw box predictions from detection head, list of (B, 4*(reg_max+1), H, W)
+        proto_sim_list: Raw similarity scores from detection head, list of (B, K, H, W)
+        target_bboxes: List of ground truth boxes per image, each (N_i, 4) in xyxy format
+        target_classes: List of ground truth classes per image, each (N_i,)
+        img_size: Image size (default 640)
+        reg_max: DFL regression max value
+        strides: Stride for each scale level
+        
+    Returns:
+        assigned_boxes: (M, 4*(reg_max+1)) box predictions for matched anchors
+        assigned_cls_logits: (M, K) class logits for matched anchors  
+        assigned_dfl_dist: (M, 4*(reg_max+1)) DFL distributions for matched anchors
+        assigned_anchor_points: (M, 2) anchor points (x, y) in pixel coordinates
+        assigned_strides: (M,) stride values for each matched anchor
+        target_boxes: (M, 4) target boxes for matched anchors
+        target_cls_onehot: (M, K) one-hot class targets
+        target_dfl: (M, 4) DFL regression targets
+    """
+    device = proto_boxes_list[0].device
+    batch_size = proto_boxes_list[0].shape[0]
+    num_classes = proto_sim_list[0].shape[1]
+    
+    # Collect all assigned anchors across batch and scales
+    all_assigned_boxes = []
+    all_assigned_cls = []
+    all_assigned_dfl = []
+    all_assigned_anchor_points = []
+    all_assigned_strides = []
+    all_target_boxes = []
+    all_target_cls = []
+    all_target_dfl = []
+    
+    # Process each image in batch
+    for batch_idx in range(batch_size):
+        gt_boxes = target_bboxes[batch_idx]  # (N_gt, 4)
+        gt_classes = target_classes[batch_idx]  # (N_gt,)
+        
+        if len(gt_boxes) == 0:
+            # No targets for this image, skip
+            continue
+        
+        # Convert GT boxes to center format for assignment
+        gt_centers_x = (gt_boxes[:, 0] + gt_boxes[:, 2]) / 2  # (N_gt,)
+        gt_centers_y = (gt_boxes[:, 1] + gt_boxes[:, 3]) / 2  # (N_gt,)
+        
+        # Process each scale
+        for scale_idx, (boxes, sim, stride) in enumerate(zip(proto_boxes_list, proto_sim_list, strides)):
+            _, C_box, H, W = boxes.shape
+            _, K, _, _ = sim.shape
+            
+            # Extract predictions for this image
+            img_boxes = boxes[batch_idx]  # (C_box, H, W) where C_box = 4*(reg_max+1)
+            img_sim = sim[batch_idx]      # (K, H, W)
+            
+            # Create anchor grid for this scale
+            grid_y, grid_x = torch.meshgrid(
+                torch.arange(H, device=device, dtype=torch.float32),
+                torch.arange(W, device=device, dtype=torch.float32),
+                indexing='ij'
+            )
+            # Anchor centers in pixel coordinates
+            anchor_x = (grid_x + 0.5) * stride  # (H, W)
+            anchor_y = (grid_y + 0.5) * stride  # (H, W)
+            
+            # For each GT box, find anchors whose centers fall inside it
+            for gt_idx in range(len(gt_boxes)):
+                gt_box = gt_boxes[gt_idx]  # (4,) [x1, y1, x2, y2]
+                gt_cls = gt_classes[gt_idx]  # scalar
+                
+                # Find anchors inside this GT box
+                mask = (
+                    (anchor_x >= gt_box[0]) & (anchor_x <= gt_box[2]) &
+                    (anchor_y >= gt_box[1]) & (anchor_y <= gt_box[3])
+                )  # (H, W)
+                
+                if not mask.any():
+                    # No anchors assigned to this GT, assign to closest anchor
+                    gt_cx, gt_cy = gt_centers_x[gt_idx], gt_centers_y[gt_idx]
+                    dist = (anchor_x - gt_cx) ** 2 + (anchor_y - gt_cy) ** 2
+                    closest_idx = dist.argmin()
+                    mask = torch.zeros_like(mask)
+                    mask.view(-1)[closest_idx] = True
+                
+                # Extract assigned anchor predictions
+                # boxes: (C_box, H, W) -> select mask positions
+                assigned_box_preds = img_boxes[:, mask].t()  # (N_assigned, C_box)
+                assigned_cls_preds = img_sim[:, mask].t()     # (N_assigned, K)
+                
+                # Extract anchor points for assigned anchors (in pixel coordinates)
+                assigned_anchor_x = anchor_x[mask]  # (N_assigned,)
+                assigned_anchor_y = anchor_y[mask]  # (N_assigned,)
+                assigned_anchor_pts = torch.stack([assigned_anchor_x, assigned_anchor_y], dim=1)  # (N_assigned, 2)
+                
+                # Repeat target for all assigned anchors
+                n_assigned = assigned_box_preds.shape[0]
+                repeated_gt_box = gt_box.unsqueeze(0).repeat(n_assigned, 1)  # (N_assigned, 4)
+                repeated_gt_cls = gt_cls.unsqueeze(0).repeat(n_assigned)      # (N_assigned,)
+                repeated_stride = torch.full((n_assigned,), stride, dtype=torch.float32, device=device)  # (N_assigned,)
+                
+                # Collect this assignment
+                all_assigned_boxes.append(assigned_box_preds)
+                all_assigned_cls.append(assigned_cls_preds)
+                all_assigned_dfl.append(assigned_box_preds)  # DFL dist same as box preds
+                all_assigned_anchor_points.append(assigned_anchor_pts)
+                all_assigned_strides.append(repeated_stride)
+                all_target_boxes.append(repeated_gt_box)
+                all_target_cls.append(repeated_gt_cls)
+                
+                # Compute DFL targets (convert xyxy box to DFL bin format)
+                # Normalize to [0, reg_max] range
+                normalized_box = repeated_gt_box.clone()
+                normalized_box[:, [0, 2]] = (normalized_box[:, [0, 2]] / img_size * reg_max).clamp(0, reg_max)
+                normalized_box[:, [1, 3]] = (normalized_box[:, [1, 3]] / img_size * reg_max).clamp(0, reg_max)
+                all_target_dfl.append(normalized_box)
+    
+    # Concatenate all assignments
+    if len(all_assigned_boxes) == 0:
+        # No assignments at all - return dummy tensors
+        return (
+            torch.zeros((0, 4 * (reg_max + 1)), device=device),
+            torch.zeros((0, num_classes), device=device),
+            torch.zeros((0, 4 * (reg_max + 1)), device=device),
+            torch.zeros((0, 2), device=device),
+            torch.zeros((0,), device=device),
+            torch.zeros((0, 4), device=device),
+            torch.zeros((0, num_classes), device=device),
+            torch.zeros((0, 4), device=device, dtype=torch.long),
+        )
+    
+    assigned_boxes = torch.cat(all_assigned_boxes, dim=0)       # (M, 4*(reg_max+1))
+    assigned_cls_logits = torch.cat(all_assigned_cls, dim=0)    # (M, K)
+    assigned_dfl_dist = torch.cat(all_assigned_dfl, dim=0)      # (M, 4*(reg_max+1))
+    assigned_anchor_points = torch.cat(all_assigned_anchor_points, dim=0)  # (M, 2)
+    assigned_strides = torch.cat(all_assigned_strides, dim=0)   # (M,)
+    target_boxes = torch.cat(all_target_boxes, dim=0)           # (M, 4)
+    target_cls_idx = torch.cat(all_target_cls, dim=0)           # (M,)
+    target_dfl = torch.cat(all_target_dfl, dim=0).long()        # (M, 4)
+    
+    # Validate class indices are within bounds before one-hot encoding
+    if target_cls_idx.numel() > 0:
+        min_cls = target_cls_idx.min().item()
+        max_cls = target_cls_idx.max().item()
+        if min_cls < 0 or max_cls >= num_classes:
+            # Debug info
+            unique_classes = torch.unique(target_cls_idx).cpu().numpy()
+            raise ValueError(
+                f"Class indices out of bounds!\n"
+                f"  min_cls={min_cls}, max_cls={max_cls}\n"
+                f"  num_classes (from proto_sim K)={num_classes}\n"
+                f"  unique_classes in batch={unique_classes}\n"
+                f"  target_cls_idx shape={target_cls_idx.shape}\n"
+                f"  Class indices must be in [0, {num_classes-1}].\n"
+                f"  This usually means the episodic class remapping is not working correctly."
+            )
+    
+    # Convert target classes to one-hot
+    target_cls_onehot = F.one_hot(target_cls_idx.long(), num_classes=num_classes).float()  # (M, K)
+    
+    return (
+        assigned_boxes,
+        assigned_cls_logits,
+        assigned_dfl_dist,
+        assigned_anchor_points,
+        assigned_strides,
+        target_boxes,
+        target_cls_onehot,
+        target_dfl,
+    )
+
 
 def box_iou(boxes1: torch.Tensor, boxes2: torch.Tensor) -> torch.Tensor:
     """
@@ -104,16 +319,21 @@ def match_predictions_to_targets(
 
 
 def prepare_loss_inputs(
-    model_outputs: Dict[str, torch.Tensor],
-    batch: Dict[str, torch.Tensor],
+    model_outputs: Dict,
+    batch: Dict,
     stage: int = 2,
     reg_max: int = 16,
 ) -> Dict:
     """
-    Prepare inputs for ReferenceBasedDetectionLoss.
+    Prepare inputs for ReferenceBasedDetectionLoss using anchor-based assignment.
+    
+    This function now works directly with RAW detection head outputs and assigns
+    targets to anchors, ensuring gradients flow even during early training.
     
     Args:
-        model_outputs: Output dict from YOLOv8nRefDet forward pass
+        model_outputs: Output dict from YOLOv8nRefDet forward pass with:
+                       - 'prototype_boxes': List[(B, 4*(reg_max+1), H, W)]
+                       - 'prototype_sim': List[(B, K, H, W)]
         batch: Batch dict from collator
         stage: Training stage (1, 2, or 3)
         reg_max: Maximum regression value for DFL
@@ -122,52 +342,118 @@ def prepare_loss_inputs(
         loss_inputs: Dict ready for loss function
     """
     device = batch['query_images'].device
+    num_classes = int(batch['num_classes'])  # Ensure it's int, not tensor
     
-    # Extract predictions
-    pred_bboxes = model_outputs.get('pred_bboxes', torch.zeros((0, 4), device=device))
-    pred_scores = model_outputs.get('pred_scores', torch.zeros(0, device=device))
-    pred_cls_logits = model_outputs.get('pred_cls_logits', torch.zeros((0, batch['num_classes']), device=device))
-    pred_dfl_dist = model_outputs.get('pred_dfl_dist', torch.zeros((0, 4 * (reg_max + 1)), device=device))
+    # Extract target lists from batch (these are always Lists from collator)
+    target_bboxes = batch['target_bboxes']  # type: List[torch.Tensor]
+    target_classes = batch['target_classes']  # type: List[torch.Tensor]
     
-    # Match predictions to targets
-    matched_pred_indices, matched_target_bboxes, matched_target_classes = match_predictions_to_targets(
-        pred_bboxes=pred_bboxes,
-        pred_scores=pred_scores,
-        target_bboxes=batch['target_bboxes'],
-        target_classes=batch['target_classes'],
-    )
+    # Validate target_classes are within bounds BEFORE anchor assignment
+    for img_idx, tc in enumerate(target_classes):
+        if tc.numel() > 0:
+            min_cls = tc.min().item()
+            max_cls = tc.max().item()
+            if min_cls < 0 or max_cls >= num_classes:
+                raise ValueError(
+                    f"Target class indices out of bounds at image {img_idx}!\n"
+                    f"  Classes in image: {tc.cpu().numpy()}\n"
+                    f"  min={min_cls}, max={max_cls}\n"
+                    f"  num_classes={num_classes} (valid range: [0, {num_classes-1}])\n"
+                    f"  This means the collator's episodic class remapping failed."
+                )
     
-    # Prepare detection loss inputs
-    if len(matched_pred_indices) > 0:
-        # Get matched predictions
-        matched_pred_bboxes = pred_bboxes[matched_pred_indices]
-        matched_pred_cls_logits = pred_cls_logits[matched_pred_indices]
-        matched_pred_dfl_dist = pred_dfl_dist[matched_pred_indices]
+    # Check if we have raw detection head outputs
+    if 'prototype_boxes' in model_outputs and 'prototype_sim' in model_outputs:
+        # NEW: Anchor-based assignment with raw outputs
+        proto_boxes = model_outputs['prototype_boxes']  # type: List[torch.Tensor]
+        proto_sim = model_outputs['prototype_sim']  # type: List[torch.Tensor]
         
-        # Prepare classification targets (one-hot encoding)
-        num_classes = batch['num_classes']
-        target_cls_onehot = F.one_hot(matched_target_classes, num_classes=num_classes).float()
+        # Assign targets to anchors
+        (matched_pred_bboxes, matched_pred_cls_logits, matched_pred_dfl_dist,
+         matched_anchor_points, matched_assigned_strides, matched_target_bboxes, target_cls_onehot, target_dfl) = assign_targets_to_anchors(
+            proto_boxes_list=proto_boxes,
+            proto_sim_list=proto_sim,
+            target_bboxes=target_bboxes,
+            target_classes=target_classes,
+            img_size=640,
+            reg_max=reg_max,
+        )
         
-        # Prepare DFL targets
-        # Convert bbox coordinates to DFL bin indices
-        # Normalize bboxes to [0, 1] first
-        img_size = 640  # Query image size
-        normalized_bboxes = matched_target_bboxes.clone()
-        normalized_bboxes[:, [0, 2]] /= img_size
-        normalized_bboxes[:, [1, 3]] /= img_size
+        # Decode DFL distributions to bbox coordinates using actual stride per anchor
+        if matched_pred_dfl_dist.shape[0] > 0:
+            # Initialize DFL decoder
+            dfl_decoder = DFLoss(reg_max=reg_max)
+            
+            # Decode DFL dist to distances in grid cell units [0, reg_max]
+            # matched_pred_dfl_dist: (M, 4*(reg_max+1))
+            # decoded_dists_grid: (M, 4) in [0, reg_max] range (grid cell units)
+            decoded_dists_grid = dfl_decoder.decode(matched_pred_dfl_dist)  # (M, 4) [left, top, right, bottom]
+            
+            # Convert grid distances to pixel distances using actual stride per anchor
+            # matched_assigned_strides: (M,) stride value for each anchor
+            # decoded_dists_grid: (M, 4) in [0, reg_max] grid units
+            # Multiply each anchor's distances by its corresponding stride
+            decoded_dists_pixel = decoded_dists_grid * matched_assigned_strides.unsqueeze(-1)  # (M, 4) in pixels
+            
+            # Convert distance format (ltrb from anchor) to xyxy bbox coordinates
+            # matched_anchor_points: (M, 2) [x, y] in pixel coordinates
+            # decoded_dists_pixel: (M, 4) [left, top, right, bottom] in pixels
+            matched_pred_bboxes = dist2bbox(decoded_dists_pixel, matched_anchor_points, xywh=False, dim=-1)
+        else:
+            # No matches, keep as-is (empty tensor)
+            matched_pred_bboxes = torch.zeros((0, 4), device=device)
         
-        # Convert to DFL targets (discretize into bins)
-        target_dfl = (normalized_bboxes * reg_max).long()
-        target_dfl = torch.clamp(target_dfl, 0, reg_max)
+        # Extract matched target classes from one-hot encoding for contrastive/triplet loss
+        if target_cls_onehot.shape[0] > 0:
+            matched_target_classes = target_cls_onehot.argmax(dim=1)
+        else:
+            matched_target_classes = torch.zeros(0, dtype=torch.long, device=device)
         
     else:
-        # No matches - use dummy tensors
-        matched_pred_bboxes = torch.zeros((0, 4), device=device)
-        matched_pred_cls_logits = torch.zeros((0, batch['num_classes']), device=device)
-        matched_pred_dfl_dist = torch.zeros((0, 4 * (reg_max + 1)), device=device)
-        target_cls_onehot = torch.zeros((0, batch['num_classes']), device=device)
-        target_dfl = torch.zeros((0, 4), dtype=torch.long, device=device)
-        matched_target_bboxes = torch.zeros((0, 4), device=device)
+        # OLD: Backward compatibility with decoded predictions (fallback)
+        pred_bboxes = model_outputs.get('pred_bboxes', torch.zeros((0, 4), device=device))
+        pred_scores = model_outputs.get('pred_scores', torch.zeros(0, device=device))
+        pred_cls_logits = model_outputs.get('pred_cls_logits', torch.zeros((0, num_classes), device=device))
+        pred_dfl_dist = model_outputs.get('pred_dfl_dist', torch.zeros((0, 4 * (reg_max + 1)), device=device))
+        
+        # Match predictions to targets
+        matched_pred_indices, matched_target_bboxes_list, matched_target_classes = match_predictions_to_targets(
+            pred_bboxes=pred_bboxes,
+            pred_scores=pred_scores,
+            target_bboxes=target_bboxes,
+            target_classes=target_classes,
+        )
+        
+        # Prepare detection loss inputs
+        if len(matched_pred_indices) > 0:
+            # Get matched predictions
+            matched_pred_bboxes = pred_bboxes[matched_pred_indices]
+            matched_pred_cls_logits = pred_cls_logits[matched_pred_indices]
+            matched_pred_dfl_dist = pred_dfl_dist[matched_pred_indices]
+            matched_target_bboxes = matched_target_bboxes_list
+            
+            # Prepare classification targets (one-hot encoding)
+            target_cls_onehot = F.one_hot(matched_target_classes, num_classes=num_classes).float()
+            
+            # Prepare DFL targets
+            img_size = 640  # Query image size
+            normalized_bboxes = matched_target_bboxes.clone()
+            normalized_bboxes[:, [0, 2]] /= img_size
+            normalized_bboxes[:, [1, 3]] /= img_size
+            
+            target_dfl = (normalized_bboxes * reg_max).long()
+            target_dfl = torch.clamp(target_dfl, 0, reg_max)
+            
+        else:
+            # No matches - use dummy tensors
+            matched_pred_bboxes = torch.zeros((0, 4), device=device)
+            matched_pred_cls_logits = torch.zeros((0, num_classes), device=device)
+            matched_pred_dfl_dist = torch.zeros((0, 4 * (reg_max + 1)), device=device)
+            target_cls_onehot = torch.zeros((0, num_classes), device=device)
+            target_dfl = torch.zeros((0, 4), dtype=torch.long, device=device)
+            matched_target_bboxes = torch.zeros((0, 4), device=device)
+            matched_target_classes = torch.zeros(0, dtype=torch.long, device=device)
+            matched_target_classes = torch.zeros(0, dtype=torch.long, device=device)
     
     # Prepare loss inputs dict
     loss_inputs = {
@@ -242,7 +528,8 @@ def extract_roi_features(
     scaled_bboxes = bboxes / stride
     
     # Add batch index (assuming single image)
-    batch_indices = torch.zeros((len(bboxes), 1), device=bboxes.device)
+    num_boxes = bboxes.shape[0] if len(bboxes.shape) > 1 else len(bboxes)  # type: ignore
+    batch_indices = torch.zeros((num_boxes, 1), device=bboxes.device)
     rois = torch.cat([batch_indices, scaled_bboxes], dim=1)
     
     # ROI pooling

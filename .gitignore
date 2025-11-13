@@ -4,8 +4,8 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
-datasets/
+datasets/test/
+datasets/train/
 raw/
 *.zip
-models/
 *.pt

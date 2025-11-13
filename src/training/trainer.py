@@ -280,6 +280,9 @@ class RefDetTrainer:
             # Optimizer step (with gradient accumulation)
             if (batch_idx + 1) % self.gradient_accumulation_steps == 0:
                 if self.mixed_precision:
+                    # Unscale gradients before stepping (required for proper inf/nan checks)
+                    self.scaler.unscale_(self.optimizer)
+                    # Step optimizer and update scaler
                     self.scaler.step(self.optimizer)
                     self.scaler.update()
                 else:

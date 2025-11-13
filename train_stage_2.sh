@@ -25,7 +25,11 @@ python train.py \
     --supcon_weight 1.2 \
     --cpe_weight 0.6 \
     --triplet_weight 0.3 \
-    --yolo_weights ./models/base/yolov8-n.pt \
+    --yolo_weights ./models/yolov8-n.pt \
     --dinov3_model vit_small_patch16_dinov3.lvd1689m \
     --freeze_dinov3 \
+    --use_wandb \
+    --wandb_project ZALO \
+    --wandb_entity it-dainb \
+    --wandb_name test_1 \
     --val_st_iou_cache

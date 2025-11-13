@@ -26,4 +26,8 @@ python train.py \
     --cpe_weight 0.2 \
     --triplet_weight 0.6 \
     --resume ./checkpoints/stage2/best_model.pt \
+    --use_wandb \
+    --wandb_project ZALO \
+    --wandb_entity it-dainb \
+    --wandb_name test_1 \
     --val_st_iou_cache

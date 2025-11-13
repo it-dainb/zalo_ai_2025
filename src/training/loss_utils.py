@@ -482,11 +482,27 @@ def prepare_loss_inputs(
         if 'support_prototypes' in model_outputs:
             loss_inputs['support_prototypes'] = model_outputs['support_prototypes']
         
-        # Feature labels for contrastive learning
-        if len(matched_target_classes) > 0:
+        # Feature labels for contrastive learning (per-image labels for episodic learning)
+        # Use class_ids from batch if available (episodic learning)
+        # Otherwise fall back to matched_target_classes (detection)
+        if 'class_ids' in batch and batch['class_ids'] is not None:
+            # Episodic learning: per-image class labels (B,)
+            loss_inputs['feature_labels'] = batch['class_ids']
+        elif len(matched_target_classes) > 0:
+            # Fallback: per-anchor matched classes (M,)
             loss_inputs['feature_labels'] = matched_target_classes
+        
+        # For batch-hard triplet loss in Stage 2+, use query_features as embeddings
+        # BatchHardTripletLoss will automatically mine hard triplets from the batch
+        if 'query_features' in model_outputs:
+            loss_inputs['triplet_embeddings'] = model_outputs['query_features']
+            # Use same labels as contrastive loss
+            if 'class_ids' in batch and batch['class_ids'] is not None:
+                loss_inputs['triplet_labels'] = batch['class_ids']
+            elif len(matched_target_classes) > 0:
+                loss_inputs['triplet_labels'] = matched_target_classes
     
-    # Add triplet loss inputs for Stage 3
+    # Add triplet loss inputs for Stage 3 (for regular triplet loss with anchor/pos/neg)
     if stage >= 3:
         if 'triplet_embeddings' in model_outputs:
             loss_inputs['triplet_embeddings'] = model_outputs['triplet_embeddings']

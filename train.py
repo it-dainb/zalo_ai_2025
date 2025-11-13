@@ -104,6 +104,8 @@ def parse_args():
                         help='Strategy for selecting negative samples')
     parser.add_argument('--triplet_batch_size', type=int, default=8,
                         help='Batch size for triplet learning')
+    parser.add_argument('--use_batch_hard_triplet', action='store_true', default=False,
+                        help='Use batch-hard triplet loss (mines triplets from each detection batch)')
     
     # Model arguments
     parser.add_argument('--yolo_weights', type=str, default='./models/yolov8-n.pt',
@@ -348,6 +350,7 @@ def create_loss_fn(args):
         supcon_weight=args.supcon_weight,
         cpe_weight=args.cpe_weight,
         triplet_weight=args.triplet_weight,
+        use_batch_hard_triplet=args.use_batch_hard_triplet,
     )
     
     print(f"Loss weights:")

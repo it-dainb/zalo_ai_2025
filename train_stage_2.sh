@@ -13,6 +13,7 @@ python train.py \
     --triplet_ratio 0.3 \
     --negative_strategy mixed \
     --triplet_batch_size 32 \
+    --use_batch_hard_triplet \
     --lr 1e-4 \
     --weight_decay 0.05 \
     --gradient_accumulation 1 \

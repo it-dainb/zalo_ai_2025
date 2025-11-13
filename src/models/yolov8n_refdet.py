@@ -374,7 +374,23 @@ class YOLOv8nRefDet(nn.Module):
         
         detections = self.detection_head(fused_features, prototypes, mode=mode)
         
-        # Step 5: Add global features for triplet loss if requested
+        # Step 5: Add features for contrastive losses
+        # For SupCon loss (Stage 2): Add query_features and support_prototypes
+        if mode in ['prototype', 'dual'] and support_features_for_head is not None:
+            # Query features: Use P4 scale features for contrastive learning (middle scale)
+            # Pool spatial features to 1D: (B, 128, H, W) -> (B, 128)
+            if 'p4' in query_features:
+                query_feat_map = query_features['p4']  # (B, 128, H, W)
+                # Global average pooling
+                query_feat_pooled = torch.nn.functional.adaptive_avg_pool2d(query_feat_map, 1)  # (B, 128, 1, 1)
+                detections['query_features'] = query_feat_pooled.squeeze(-1).squeeze(-1)  # (B, 128)
+            
+            # Support prototypes: Already 1D vectors from DINO encoder
+            # Shape: (N, 128) for N-way episodic, or (1, 128) for single prototype
+            if 'p4' in support_features_for_head:
+                detections['support_prototypes'] = support_features_for_head['p4']
+        
+        # For triplet loss (Stage 3): Add global features if requested
         if return_features:
             if 'global_feat' in query_features:
                 detections['query_global_feat'] = query_features['global_feat']

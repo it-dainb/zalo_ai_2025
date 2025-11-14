@@ -34,4 +34,5 @@ python train.py \
     --wandb_project ZALO \
     --wandb_entity it-dainb \
     --wandb_name stage_2 \
-    --val_st_iou_cache  ./datasets/test/annotations/
+    --val_st_iou_cache  ./datasets/test/annotations/ \
+    --debug

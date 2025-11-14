@@ -551,6 +551,16 @@ class RefDetTrainer:
             wandb_log['train_epoch/epoch'] = epoch
             wandb.log(wandb_log, step=self.global_step)
         
+        # Clear model's internal caches every epoch
+        if hasattr(self.model, 'clear_cache'):
+            self.model.clear_cache()
+        
+        # Force garbage collection after each epoch
+        import gc
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        
         return avg_metrics
     
     def validate(
@@ -757,6 +767,20 @@ class RefDetTrainer:
         
         # Memory cleanup to prevent memory leak
         import gc
+        
+        # CRITICAL FIX: Delete large accumulated lists to prevent memory leak
+        # These lists grow with every validation sample and cause OOM
+        del all_st_ious, all_pred_bboxes, all_pred_scores, all_pred_classes
+        del all_gt_bboxes, all_gt_classes
+        
+        # Also delete flattened arrays if they were created
+        try:
+            del all_pred_bboxes_flat, all_pred_scores_flat, all_pred_classes_flat
+            del all_gt_bboxes_flat, all_gt_classes_flat
+        except NameError:
+            pass  # Variables don't exist if no detection metrics computed
+        
+        # Clear CUDA cache and run garbage collection
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
         gc.collect()

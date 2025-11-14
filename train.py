@@ -305,7 +305,7 @@ def create_dataloaders(args, aug_config):
             dataset=val_dataset,
             n_way=min(args.n_way, len(val_dataset.classes)),
             n_query=args.n_query,
-            n_episodes=20,  # Fewer episodes for validation
+            n_episodes=10,  # Reduced from 20 to prevent memory issues
         )
         
         val_collator = RefDetCollator(

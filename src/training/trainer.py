@@ -417,6 +417,11 @@ class RefDetTrainer:
                                 max_norm=self.gradient_clip_norm
                             )
                         
+                        # Track gradient norm history (with bounded size)
+                        if len(self.grad_norm_history) >= self.grad_norm_window:
+                            self.grad_norm_history.pop(0)  # Remove oldest
+                        self.grad_norm_history.append(float(clipped_norm))
+                        
                         if self.debug_mode and (batch_idx == 0 or batch_idx % 50 == 0):
                             self.logger.debug(f"\nGradient Clipping:")
                             self.logger.debug(f"  Norm before clip: {total_norm_before:.4e}")
@@ -434,6 +439,11 @@ class RefDetTrainer:
                                 self.model.parameters(), 
                                 max_norm=self.gradient_clip_norm
                             )
+                        
+                        # Track gradient norm history (with bounded size)
+                        if len(self.grad_norm_history) >= self.grad_norm_window:
+                            self.grad_norm_history.pop(0)  # Remove oldest
+                        self.grad_norm_history.append(float(clipped_norm))
                         
                         if self.debug_mode and (batch_idx == 0 or batch_idx % 50 == 0):
                             self.logger.debug(f"\nGradient Clipping:")
@@ -670,13 +680,15 @@ class RefDetTrainer:
                                 
                                 # Compute spatial IoU (ST-IoU with single frame)
                                 spatial_iou = compute_spatial_iou(gt_box, pred_box)
-                                all_st_ious.append(spatial_iou)
+                                # Convert to Python float to avoid keeping computation graph
+                                all_st_ious.append(float(spatial_iou) if isinstance(spatial_iou, torch.Tensor) else spatial_iou)
                         
                         # Accumulate for mAP computation (always use batch GT for mAP)
-                        all_pred_bboxes.append(sample_pred_bboxes)
-                        all_pred_scores.append(sample_pred_scores)
-                        all_pred_classes.append(sample_pred_classes)
-                        # Use batch GT for mAP (not cached, to ensure consistency)
+                        # Detach and convert to numpy to avoid memory leak
+                        all_pred_bboxes.append(sample_pred_bboxes)  # Already numpy from line 626
+                        all_pred_scores.append(sample_pred_scores)  # Already numpy from line 627
+                        all_pred_classes.append(sample_pred_classes)  # Already numpy from line 628
+                        # Use batch GT for mAP (not cached, to ensure consistency) - already numpy from line 630
                         all_gt_bboxes.append(gt_bboxes_list[i])
                         all_gt_classes.append(gt_classes_list[i])
         
@@ -742,6 +754,12 @@ class RefDetTrainer:
         if self.use_wandb:
             wandb_log = {f'val/{k}': v for k, v in avg_metrics.items()}
             wandb.log(wandb_log, step=self.global_step)
+        
+        # Memory cleanup to prevent memory leak
+        import gc
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        gc.collect()
         
         return avg_metrics
     

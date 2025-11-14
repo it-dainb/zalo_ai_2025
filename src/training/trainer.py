@@ -99,7 +99,15 @@ class RefDetTrainer:
         self.use_wandb = use_wandb and WANDB_AVAILABLE
         self.debug_mode = debug_mode
         
-        # Setup debug logger
+        # ST-IoU cache for faster validation
+        self.val_st_iou_cache_dir = Path(val_st_iou_cache_dir) if val_st_iou_cache_dir else None
+        self._cached_st_iou_gt = None
+        self._cached_st_iou_metadata = None
+        
+        # Create checkpoint directory first (before logger setup)
+        self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Setup debug logger (after checkpoint_dir exists)
         self.logger = logging.getLogger('RefDetTrainer')
         self.logger.setLevel(logging.DEBUG if debug_mode else logging.INFO)
         if not self.logger.handlers:
@@ -123,14 +131,6 @@ class RefDetTrainer:
                 file_handler.setFormatter(file_formatter)
                 self.logger.addHandler(file_handler)
                 print(f"Debug logging enabled. Logs will be saved to: {log_file}")
-        
-        # ST-IoU cache for faster validation
-        self.val_st_iou_cache_dir = Path(val_st_iou_cache_dir) if val_st_iou_cache_dir else None
-        self._cached_st_iou_gt = None
-        self._cached_st_iou_metadata = None
-        
-        # Create checkpoint directory
-        self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
         
         # Mixed precision scaler
         self.scaler = GradScaler() if mixed_precision else None

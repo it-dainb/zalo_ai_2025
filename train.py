@@ -126,8 +126,8 @@ def parse_args():
                         help='Base learning rate')
     parser.add_argument('--weight_decay', type=float, default=0.05,
                         help='Weight decay')
-    parser.add_argument('--gradient_accumulation', type=int, default=1,
-                        help='Gradient accumulation steps')
+    parser.add_argument('--gradient_accumulation', type=int, default=4,
+                        help='Gradient accumulation steps (increased to 4 to compensate for reduced num_workers)')
     parser.add_argument('--gradient_clip_norm', type=float, default=1.0,
                         help='Gradient clipping max norm (0 = no clipping, recommended: 0.5-2.0)')
     
@@ -148,8 +148,8 @@ def parse_args():
     # Training settings
     parser.add_argument('--mixed_precision', action='store_true', default=True,
                         help='Use automatic mixed precision')
-    parser.add_argument('--num_workers', type=int, default=4,
-                        help='Number of data loading workers')
+    parser.add_argument('--num_workers', type=int, default=1,
+                        help='Number of data loading workers (reduced to 1 to prevent OOM)')
     parser.add_argument('--checkpoint_dir', type=str, default='./checkpoints',
                         help='Directory to save checkpoints')
     parser.add_argument('--save_interval', type=int, default=10,
@@ -251,6 +251,8 @@ def create_dataloaders(args, aug_config):
         collate_fn=train_collator,
         num_workers=args.num_workers,
         pin_memory=True,
+        persistent_workers=False,  # Don't keep workers alive between epochs to save memory
+        prefetch_factor=1 if args.num_workers > 0 else None,  # Reduce prefetch to save memory
     )
     
     # Create triplet data loader if enabled
@@ -282,6 +284,8 @@ def create_dataloaders(args, aug_config):
             collate_fn=triplet_collator,
             num_workers=args.num_workers,
             pin_memory=True,
+            persistent_workers=False,  # Don't keep workers alive between epochs to save memory
+            prefetch_factor=1 if args.num_workers > 0 else None,  # Reduce prefetch to save memory
         )
         
         print(f"  Triplet dataset size: {len(triplet_dataset)}")
@@ -305,7 +309,7 @@ def create_dataloaders(args, aug_config):
             dataset=val_dataset,
             n_way=min(args.n_way, len(val_dataset.classes)),
             n_query=args.n_query,
-            n_episodes=10,  # Reduced from 20 to prevent memory issues
+            n_episodes=5,  # Reduced from 10 to prevent memory issues during validation
         )
         
         val_collator = RefDetCollator(
@@ -320,6 +324,8 @@ def create_dataloaders(args, aug_config):
             collate_fn=val_collator,
             num_workers=args.num_workers,
             pin_memory=True,
+            persistent_workers=False,  # Don't keep workers alive between epochs to save memory
+            prefetch_factor=1 if args.num_workers > 0 else None,  # Reduce prefetch to save memory
         )
         
         print(f"✓ Validation data loader created")

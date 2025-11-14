@@ -534,9 +534,19 @@ class RefDetTrainer:
             if batch_idx % self.log_interval == 0:
                 current_lr = self.optimizer.param_groups[0]['lr']
                 pbar.set_postfix({
-                    'loss': f"{loss.item() * self.gradient_accumulation_steps:.4f}",
+                    'loss': f"{total_loss / max(num_batches, 1):.4f}",
                     'lr': f"{current_lr:.6f}",
                 })
+            
+            # Aggressive memory cleanup every batch to prevent worker OOM
+            del batch, batch_to_use, loss, losses_dict
+            
+            # Clear CUDA cache periodically (every 50 batches)
+            if batch_idx % 50 == 0:
+                import gc
+                gc.collect()
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
         
         # Average metrics
         avg_metrics = {
@@ -701,6 +711,13 @@ class RefDetTrainer:
                         # Use batch GT for mAP (not cached, to ensure consistency) - already numpy from line 630
                         all_gt_bboxes.append(gt_bboxes_list[i])
                         all_gt_classes.append(gt_classes_list[i])
+                    
+                    # Memory cleanup after detection metrics computation
+                    del model_outputs, pred_bboxes, pred_scores, pred_classes
+                    del support_images, support_flat, gt_bboxes_list, gt_classes_list
+                
+                # Memory cleanup after each validation batch
+                del batch, loss, losses_dict
         
         # Average loss metrics
         avg_metrics = {

@@ -8,11 +8,11 @@ python train.py \
     --n_way 4 \
     --n_query 8 \
     --num_aug 5 \
-    --n_episodes 200 \
+    --auto_episodes \
     --use_triplet \
     --triplet_ratio 0.3 \
     --negative_strategy mixed \
-    --triplet_batch_size 32 \
+    --triplet_batch_size 64 \
     --use_batch_hard_triplet \
     --lr 1e-4 \
     --weight_decay 0.05 \

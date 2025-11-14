@@ -92,7 +92,11 @@ def parse_args():
     parser.add_argument('--n_query', type=int, default=4,
                         help='Number of query samples per class (Q-query)')
     parser.add_argument('--n_episodes', type=int, default=100,
-                        help='Number of episodes per epoch')
+                        help='Number of episodes per epoch (ignored if --auto_episodes is used)')
+    parser.add_argument('--auto_episodes', action='store_true', default=False,
+                        help='Automatically calculate n_episodes based on dataset size and stage')
+    parser.add_argument('--coverage_factor', type=float, default=None,
+                        help='Dataset coverage per epoch (None=auto based on stage, 1.0=full coverage, 2.0=2x coverage)')
     
     # Triplet training arguments (Stage 2 & 3)
     parser.add_argument('--use_triplet', action='store_true', default=False,
@@ -202,12 +206,35 @@ def create_dataloaders(args, aug_config):
         support_cache_size_mb=args.support_cache_size_mb if not args.disable_cache else 1,
     )
     
+    # Calculate n_episodes automatically if requested
+    if args.auto_episodes:
+        from src.datasets.episode_calculator import auto_calculate_episodes
+        
+        print(f"\n{'='*70}")
+        print("AUTO-CALCULATING N_EPISODES")
+        print(f"{'='*70}")
+        
+        n_episodes = auto_calculate_episodes(
+            dataset=train_dataset,
+            n_way=args.n_way,
+            n_query=args.n_query,
+            stage=args.stage,
+            coverage_factor=args.coverage_factor,
+            verbose=True,
+        )
+        
+        print(f"\n✓ Using auto-calculated n_episodes: {n_episodes}")
+        print(f"{'='*70}\n")
+    else:
+        n_episodes = args.n_episodes
+        print(f"\n✓ Using manual n_episodes: {n_episodes}\n")
+    
     # Episodic batch sampler
     train_sampler = EpisodicBatchSampler(
         dataset=train_dataset,
         n_way=args.n_way,
         n_query=args.n_query,
-        n_episodes=args.n_episodes,
+        n_episodes=n_episodes,
     )
     
     # Collate function
@@ -298,7 +325,7 @@ def create_dataloaders(args, aug_config):
         print(f"✓ Validation data loader created")
     
     print(f"✓ Training data loader created")
-    print(f"  Episodes per epoch: {args.n_episodes}")
+    print(f"  Episodes per epoch: {n_episodes}")
     print(f"  N-way: {args.n_way}")
     print(f"  Q-query: {args.n_query}")
     

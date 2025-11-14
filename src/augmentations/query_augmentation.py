@@ -17,6 +17,10 @@ import cv2
 from typing import Dict, List, Tuple, Optional, Any
 import random
 from copy import deepcopy
+import warnings
+
+# Suppress albumentations division warnings (filtered by min_area and min_visibility in BboxParams)
+warnings.filterwarnings('ignore', message='.*invalid value encountered in divide.*', category=RuntimeWarning)
 
 
 # ============================================================================
@@ -712,8 +716,8 @@ class QueryAugmentation:
         ], bbox_params=A.BboxParams(
             format='pascal_voc',
             label_fields=['labels'],
-            min_area=1.0,  # Filter out bboxes with area < 1 pixel
-            min_visibility=0.0  # Keep boxes even if partially occluded
+            min_area=2.0,  # Filter out bboxes with area < 2 pixels (prevents div by zero)
+            min_visibility=0.1  # Require at least 10% visibility to avoid zero-area boxes
         ))
     
     def _get_stage2_transform(self):
@@ -765,8 +769,8 @@ class QueryAugmentation:
         ], bbox_params=A.BboxParams(
             format='pascal_voc',
             label_fields=['labels'],
-            min_area=1.0,  # Filter out bboxes with area < 1 pixel
-            min_visibility=0.0  # Keep boxes even if partially occluded
+            min_area=2.0,  # Filter out bboxes with area < 2 pixels (prevents div by zero)
+            min_visibility=0.1  # Require at least 10% visibility to avoid zero-area boxes
         ))
     
     def _get_stage3_transform(self):
@@ -804,8 +808,8 @@ class QueryAugmentation:
         ], bbox_params=A.BboxParams(
             format='pascal_voc',
             label_fields=['labels'],
-            min_area=1.0,  # Filter out bboxes with area < 1 pixel
-            min_visibility=0.0  # Keep boxes even if partially occluded
+            min_area=2.0,  # Filter out bboxes with area < 2 pixels (prevents div by zero)
+            min_visibility=0.1  # Require at least 10% visibility to avoid zero-area boxes
         ))
     
     def __call__(

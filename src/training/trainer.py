@@ -890,12 +890,23 @@ class RefDetTrainer:
         )
         
         # Compute triplet loss
-        # Note: Assumes loss_fn has a triplet_loss component
-        triplet_loss = self.loss_fn.triplet_loss(
-            anchor=loss_inputs['anchor_features'],
-            positive=loss_inputs['positive_features'],
-            negative=loss_inputs['negative_features'],
-        )
+        # Check if triplet_loss is BatchHardTripletLoss (needs embeddings+labels)
+        # or regular TripletLoss (needs anchor/positive/negative)
+        triplet_loss_fn = self.loss_fn.triplet_loss
+        
+        if hasattr(triplet_loss_fn, '__class__') and 'BatchHard' in triplet_loss_fn.__class__.__name__:
+            # BatchHardTripletLoss: expects (embeddings, labels)
+            triplet_loss = triplet_loss_fn(
+                embeddings=loss_inputs['triplet_embeddings'],
+                labels=loss_inputs['triplet_labels'],
+            )
+        else:
+            # Regular TripletLoss or AdaptiveTripletLoss: expects (anchor, positive, negative)
+            triplet_loss = triplet_loss_fn(
+                anchor=loss_inputs['anchor_features'],
+                positive=loss_inputs['positive_features'],
+                negative=loss_inputs['negative_features'],
+            )
         
         total_loss = triplet_loss
         losses_dict = {'triplet_loss': triplet_loss.item()}

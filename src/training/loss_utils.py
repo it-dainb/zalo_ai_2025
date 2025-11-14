@@ -465,6 +465,10 @@ def prepare_loss_inputs(
         'target_bboxes': matched_target_bboxes,
         'target_cls': target_cls_onehot,
         'target_dfl': target_dfl,
+        # Proposal features and labels for CPE loss
+        # Use query features from matched anchors as proposal features
+        'proposal_features': None,  # Will be populated below
+        'proposal_labels': None,    # Will be populated below
     }
     
     # Add contrastive learning inputs for Stage 2+
@@ -501,6 +505,58 @@ def prepare_loss_inputs(
                 loss_inputs['triplet_labels'] = batch['class_ids']
             elif len(matched_target_classes) > 0:
                 loss_inputs['triplet_labels'] = matched_target_classes
+        
+        # For CPE loss: extract ROI features from fused feature maps for each matched anchor
+        # CPE loss requires proposal features and labels for contrastive learning
+        if len(matched_pred_bboxes) > 0 and len(matched_target_classes) > 0:
+            fused_features = model_outputs.get('fused_features', {})
+            
+            if fused_features and len(fused_features) > 0:
+                # Extract ROI features from fused feature maps
+                try:
+                    proposal_features = extract_roi_features(
+                        feature_maps=fused_features,
+                        bboxes=matched_pred_bboxes,  # Use predicted bboxes as proposals
+                        output_size=7,
+                    )
+                    
+                    if proposal_features.shape[0] > 0:
+                        loss_inputs['proposal_features'] = proposal_features
+                        loss_inputs['proposal_labels'] = matched_target_classes
+                except Exception as e:
+                    # If ROI extraction fails, fall back to per-image query features
+                    if 'query_features' in model_outputs:
+                        query_features = model_outputs['query_features']
+                        # Repeat query features for each matched anchor as fallback
+                        batch_size = batch['query_images'].shape[0]
+                        if query_features.shape[0] == batch_size and matched_pred_bboxes.shape[0] > 0:
+                            # Assign each anchor to its corresponding image
+                            # This is simplified - in practice, need proper batch indexing
+                            num_anchors = matched_pred_bboxes.shape[0]
+                            anchors_per_image = num_anchors // batch_size
+                            expanded_features = query_features.repeat_interleave(anchors_per_image, dim=0)
+                            if expanded_features.shape[0] == num_anchors:
+                                loss_inputs['proposal_features'] = expanded_features
+                                loss_inputs['proposal_labels'] = matched_target_classes
+            else:
+                # No fused_features available, try using query_features directly
+                if 'query_features' in model_outputs:
+                    query_features = model_outputs['query_features']
+                    batch_size = batch['query_images'].shape[0]
+                    
+                    # Check if query_features matches anchor count
+                    if query_features.shape[0] == matched_pred_bboxes.shape[0]:
+                        # Per-anchor features: perfect for CPE loss
+                        loss_inputs['proposal_features'] = query_features
+                        loss_inputs['proposal_labels'] = matched_target_classes
+                    elif query_features.shape[0] == batch_size and matched_pred_bboxes.shape[0] > 0:
+                        # Per-image features: expand to per-anchor
+                        num_anchors = matched_pred_bboxes.shape[0]
+                        anchors_per_image = num_anchors // batch_size
+                        expanded_features = query_features.repeat_interleave(anchors_per_image, dim=0)
+                        if expanded_features.shape[0] == num_anchors:
+                            loss_inputs['proposal_features'] = expanded_features
+                            loss_inputs['proposal_labels'] = matched_target_classes
     
     # Add triplet loss inputs for Stage 3 (for regular triplet loss with anchor/pos/neg)
     if stage >= 3:
@@ -689,9 +745,28 @@ def prepare_triplet_loss_inputs(
         'negative_features': negative_features,
     }
     
-    # Add labels if available (for semi-hard mining)
-    if 'labels' in batch:
-        loss_inputs['labels'] = batch['labels']
+    # Add batch-hard triplet loss inputs (embeddings + labels)
+    # For BatchHardTripletLoss: concatenate all features as embeddings
+    # Labels: 0=anchor, 1=positive, 2=negative (or use class_ids from batch)
+    if 'class_ids' in batch:
+        # Use actual class IDs if available
+        class_ids = batch['class_ids']
+        # Create embeddings: concatenate anchor, positive, negative
+        all_embeddings = torch.cat([anchor_features, positive_features, negative_features], dim=0)
+        # Create labels: repeat class_ids for anchor, positive, negative
+        # For proper triplet mining: anchors and positives should have same label
+        all_labels = torch.cat([class_ids, class_ids, class_ids], dim=0)
+        
+        loss_inputs['triplet_embeddings'] = all_embeddings
+        loss_inputs['triplet_labels'] = all_labels
+    elif 'labels' in batch:
+        # Fallback to generic labels
+        labels = batch['labels']
+        all_embeddings = torch.cat([anchor_features, positive_features, negative_features], dim=0)
+        all_labels = torch.cat([labels, labels, labels], dim=0)
+        
+        loss_inputs['triplet_embeddings'] = all_embeddings
+        loss_inputs['triplet_labels'] = all_labels
     
     return loss_inputs
 

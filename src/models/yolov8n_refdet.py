@@ -374,6 +374,9 @@ class YOLOv8nRefDet(nn.Module):
         
         detections = self.detection_head(fused_features, prototypes, mode=mode)
         
+        # Add fused features to outputs for CPE loss (ROI feature extraction)
+        detections['fused_features'] = fused_features
+        
         # Step 5: Add features for contrastive losses
         # For SupCon loss (Stage 2): Add query_features and support_prototypes
         if mode in ['prototype', 'dual'] and support_features_for_head is not None:

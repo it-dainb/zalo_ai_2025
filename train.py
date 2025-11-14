@@ -171,6 +171,10 @@ def parse_args():
     parser.add_argument('--wandb_notes', type=str, default=None,
                         help='W&B notes for the run')
     
+    # Debug arguments
+    parser.add_argument('--debug', action='store_true', default=False,
+                        help='Enable detailed debug logging (logs batch info, gradients, model outputs)')
+    
     return parser.parse_args()
 
 
@@ -580,6 +584,7 @@ def main():
         stage=args.stage,  # Pass training stage
         use_wandb=args.use_wandb,  # Enable wandb logging
         val_st_iou_cache_dir=args.val_st_iou_cache,  # Pass ST-IoU cache directory
+        debug_mode=args.debug,  # Enable debug logging
     )
     
     # Resume from checkpoint if specified

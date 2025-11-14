@@ -12,6 +12,7 @@ import time
 from tqdm import tqdm
 import numpy as np
 import json
+import logging
 
 from src.models.yolov8n_refdet import YOLOv8nRefDet
 from src.losses.combined_loss import ReferenceBasedDetectionLoss
@@ -60,6 +61,7 @@ class RefDetTrainer:
         stage: int = 2,
         use_wandb: bool = False,
         val_st_iou_cache_dir: Optional[str] = None,
+        debug_mode: bool = False,
     ):
         """
         Args:
@@ -79,6 +81,7 @@ class RefDetTrainer:
             use_wandb: Enable Weights & Biases logging
             val_st_iou_cache_dir: Optional path to validation ST-IoU cache directory
                                   (contains *_st_iou_gt.npz and *_st_iou_metadata.json)
+            debug_mode: Enable detailed debug logging
         """
         self.model = model.to(device)
         self.loss_fn = loss_fn.to(device)
@@ -94,6 +97,32 @@ class RefDetTrainer:
         self.aug_config = aug_config
         self.stage = stage
         self.use_wandb = use_wandb and WANDB_AVAILABLE
+        self.debug_mode = debug_mode
+        
+        # Setup debug logger
+        self.logger = logging.getLogger('RefDetTrainer')
+        self.logger.setLevel(logging.DEBUG if debug_mode else logging.INFO)
+        if not self.logger.handlers:
+            # Console handler
+            console_handler = logging.StreamHandler()
+            console_formatter = logging.Formatter(
+                '[%(asctime)s] %(levelname)s - %(message)s',
+                datefmt='%H:%M:%S'
+            )
+            console_handler.setFormatter(console_formatter)
+            self.logger.addHandler(console_handler)
+            
+            # File handler for debug mode
+            if debug_mode:
+                log_file = self.checkpoint_dir / 'training_debug.log'
+                file_handler = logging.FileHandler(log_file, mode='a')
+                file_formatter = logging.Formatter(
+                    '[%(asctime)s] %(levelname)s - %(message)s',
+                    datefmt='%Y-%m-%d %H:%M:%S'
+                )
+                file_handler.setFormatter(file_formatter)
+                self.logger.addHandler(file_handler)
+                print(f"Debug logging enabled. Logs will be saved to: {log_file}")
         
         # ST-IoU cache for faster validation
         self.val_st_iou_cache_dir = Path(val_st_iou_cache_dir) if val_st_iou_cache_dir else None
@@ -284,23 +313,22 @@ class RefDetTrainer:
             
             # Forward pass
             try:
+                # Debug logging for first batch and periodically
+                if self.debug_mode and (batch_idx == 0 or batch_idx % 50 == 0):
+                    self.logger.debug(f"\n{'='*70}")
+                    self.logger.debug(f"BATCH {batch_idx} - Type: {batch_to_use.get('batch_type', 'unknown')}")
+                    self.logger.debug(f"{'='*70}")
+                    self._log_batch_info(batch_to_use, batch_idx)
+                
                 with autocast(device_type='cuda' if torch.cuda.is_available() else 'cpu', enabled=self.mixed_precision):
-                    # DEBUG: Check model outputs before loss computation
-                    if batch_idx == 0:
-                        # Get model outputs directly to debug
-                        if batch_to_use['batch_type'] == 'detection':
-                            support_images = batch_to_use['support_images']
-                            N, K, C, H, W = support_images.shape
-                            support_flat = support_images.reshape(N * K, C, H, W)
-                            self.model.set_reference_images(support_flat, average_prototypes=True)
-                            model_outputs = self.model(
-                                query_image=batch_to_use['query_images'],
-                                mode='dual',
-                                use_cache=True,
-                            )
-
-                    
                     loss, losses_dict = self._forward_step(batch_to_use)
+                    
+                    # Debug log loss values
+                    if self.debug_mode and (batch_idx == 0 or batch_idx % 50 == 0):
+                        self.logger.debug(f"\nLoss Components:")
+                        self.logger.debug(f"  Total Loss: {loss.item():.6f}")
+                        for key, val in losses_dict.items():
+                            self.logger.debug(f"  {key}: {val:.6f}")
                     
                     # Check for NaN/Inf in loss
                     if torch.isnan(loss) or torch.isinf(loss):
@@ -332,18 +360,33 @@ class RefDetTrainer:
                 
 
                 
-                # Check for NaN/Inf in gradients
+                # Check for NaN/Inf in gradients and log gradient stats
                 has_nan_grad = False
+                grad_norms = {}
+                
                 for name, param in self.model.named_parameters():
                     if param.grad is not None:
+                        grad_norm = param.grad.norm().item()
+                        grad_norms[name] = grad_norm
+                        
                         if torch.isnan(param.grad).any() or torch.isinf(param.grad).any():
-                            print(f"⚠️ NaN/Inf gradient in {name}")
+                            self.logger.warning(f"⚠️ NaN/Inf gradient in {name}")
                             has_nan_grad = True
-                            if batch_idx == 0:
-                                print(f"   Grad stats: min={param.grad.min()}, max={param.grad.max()}, mean={param.grad.mean()}")
+                            if self.debug_mode or batch_idx == 0:
+                                self.logger.debug(f"   Grad stats: min={param.grad.min():.4e}, max={param.grad.max():.4e}, mean={param.grad.mean():.4e}")
+                
+                # Debug log gradient norms
+                if self.debug_mode and (batch_idx == 0 or batch_idx % 50 == 0):
+                    self.logger.debug(f"\nGradient Norms:")
+                    total_grad_norm = sum(grad_norms.values())
+                    self.logger.debug(f"  Total Grad Norm: {total_grad_norm:.4e}")
+                    # Log top 5 largest gradients
+                    top_grads = sorted(grad_norms.items(), key=lambda x: x[1], reverse=True)[:5]
+                    for name, norm in top_grads:
+                        self.logger.debug(f"  {name}: {norm:.4e}")
                 
                 if has_nan_grad:
-                    print(f"❌ NaN/Inf gradients detected at batch {batch_idx}. Skipping optimizer step.")
+                    self.logger.error(f"❌ NaN/Inf gradients detected at batch {batch_idx}. Skipping optimizer step.")
                     self.optimizer.zero_grad()
                     
                     # Reset scaler state if using mixed precision
@@ -354,32 +397,59 @@ class RefDetTrainer:
                 
                 # Optimizer step (with gradient accumulation)
                 if (batch_idx + 1) % self.gradient_accumulation_steps == 0:
+                    # Compute total gradient norm before clipping
+                    total_norm_before = 0.0
+                    if self.debug_mode and (batch_idx == 0 or batch_idx % 50 == 0):
+                        for param in self.model.parameters():
+                            if param.grad is not None:
+                                total_norm_before += param.grad.norm().item() ** 2
+                        total_norm_before = total_norm_before ** 0.5
+                    
                     if self.mixed_precision:
                         # Unscale gradients for gradient clipping
                         self.scaler.unscale_(self.optimizer)
                         
                         # Gradient clipping (if enabled)
+                        clipped_norm = 0.0
                         if self.gradient_clip_norm > 0:
-                            torch.nn.utils.clip_grad_norm_(
+                            clipped_norm = torch.nn.utils.clip_grad_norm_(
                                 self.model.parameters(), 
                                 max_norm=self.gradient_clip_norm
                             )
+                        
+                        if self.debug_mode and (batch_idx == 0 or batch_idx % 50 == 0):
+                            self.logger.debug(f"\nGradient Clipping:")
+                            self.logger.debug(f"  Norm before clip: {total_norm_before:.4e}")
+                            self.logger.debug(f"  Norm after clip: {clipped_norm:.4e}")
+                            self.logger.debug(f"  Clip threshold: {self.gradient_clip_norm}")
                         
                         # Step optimizer (gradients already unscaled)
                         self.scaler.step(self.optimizer)
                         self.scaler.update()
                     else:
                         # Gradient clipping (if enabled)
+                        clipped_norm = 0.0
                         if self.gradient_clip_norm > 0:
-                            torch.nn.utils.clip_grad_norm_(
+                            clipped_norm = torch.nn.utils.clip_grad_norm_(
                                 self.model.parameters(), 
                                 max_norm=self.gradient_clip_norm
                             )
+                        
+                        if self.debug_mode and (batch_idx == 0 or batch_idx % 50 == 0):
+                            self.logger.debug(f"\nGradient Clipping:")
+                            self.logger.debug(f"  Norm before clip: {total_norm_before:.4e}")
+                            self.logger.debug(f"  Norm after clip: {clipped_norm:.4e}")
+                            self.logger.debug(f"  Clip threshold: {self.gradient_clip_norm}")
                         
                         self.optimizer.step()
                     
                     self.optimizer.zero_grad()
                     self.global_step += 1
+                    
+                    # Debug log parameter updates
+                    if self.debug_mode and (batch_idx == 0 or batch_idx % 50 == 0):
+                        self.logger.debug(f"\nParameter Updates (Step {self.global_step}):")
+                        self.logger.debug(f"  Learning Rate: {self.optimizer.param_groups[0]['lr']:.6e}")
                     
                     # Per-step wandb logging (if enabled)
                     if self.use_wandb and self.wandb_log_interval is not None:
@@ -708,6 +778,11 @@ class RefDetTrainer:
         support_images = batch['support_images']
         N, K, C, H, W = support_images.shape
         
+        if self.debug_mode:
+            self.logger.debug(f"\nDetection Forward Pass:")
+            self.logger.debug(f"  Support images: N={N}, K={K}, C={C}, H={H}, W={W}")
+            self.logger.debug(f"  Query images: {batch['query_images'].shape}")
+        
         # For episodic learning with N classes and K support images per class
         # Reshape to (N*K, 3, H, W) for batch processing
         support_flat = support_images.reshape(N * K, C, H, W)
@@ -728,12 +803,28 @@ class RefDetTrainer:
             class_ids=batch.get('class_ids', None),  # Pass class IDs for episodic learning
         )
         
+        if self.debug_mode:
+            self.logger.debug(f"\nModel Outputs:")
+            for key, val in model_outputs.items():
+                if isinstance(val, torch.Tensor):
+                    self.logger.debug(f"  {key}: {val.shape}, range=[{val.min().item():.4f}, {val.max().item():.4f}]")
+                elif isinstance(val, list) and len(val) > 0 and isinstance(val[0], torch.Tensor):
+                    self.logger.debug(f"  {key}: List of {len(val)} tensors, first shape={val[0].shape}")
+        
         # Prepare loss inputs
         loss_inputs = prepare_loss_inputs(
             model_outputs=model_outputs,
             batch=batch,
             stage=self.loss_fn.stage,
         )
+        
+        if self.debug_mode:
+            self.logger.debug(f"\nLoss Inputs:")
+            for key, val in loss_inputs.items():
+                if isinstance(val, torch.Tensor):
+                    self.logger.debug(f"  {key}: {val.shape}")
+                elif isinstance(val, list):
+                    self.logger.debug(f"  {key}: List of length {len(val)}")
         
         # Compute loss
         losses = self.loss_fn(**loss_inputs)
@@ -753,6 +844,12 @@ class RefDetTrainer:
         - positive_images: (B, 3, 640, 640) query frames with objects
         - negative_images: (B, 3, 640, 640) background/cross-class frames
         """
+        if self.debug_mode:
+            self.logger.debug(f"\nTriplet Forward Pass:")
+            self.logger.debug(f"  Anchor images: {batch['anchor_images'].shape}")
+            self.logger.debug(f"  Positive images: {batch['positive_images'].shape}")
+            self.logger.debug(f"  Negative images: {batch['negative_images'].shape}")
+        
         # Extract anchor features directly from support encoder (no fusion needed)
         anchor_features = self.model.support_encoder(
             batch['anchor_images'],
@@ -773,6 +870,12 @@ class RefDetTrainer:
             return_global_feat=True,
         )
         negative_global_feat = negative_features['global_feat']  # (B, 256)
+        
+        if self.debug_mode:
+            self.logger.debug(f"\nTriplet Features:")
+            self.logger.debug(f"  Anchor: {support_global_feat.shape}, norm={support_global_feat.norm(dim=1).mean().item():.4f}")
+            self.logger.debug(f"  Positive: {positive_global_feat.shape}, norm={positive_global_feat.norm(dim=1).mean().item():.4f}")
+            self.logger.debug(f"  Negative: {negative_global_feat.shape}, norm={negative_global_feat.norm(dim=1).mean().item():.4f}")
         
         # Combine outputs for triplet loss preparation
         combined_outputs = {
@@ -828,6 +931,44 @@ class RefDetTrainer:
         }
         
         return total_loss, losses_dict
+    
+    def _log_batch_info(self, batch: Dict, batch_idx: int):
+        """
+        Log detailed information about a batch for debugging.
+        
+        Args:
+            batch: Batch dictionary
+            batch_idx: Batch index
+        """
+        self.logger.debug(f"\nBatch Contents:")
+        for key, value in batch.items():
+            if isinstance(value, torch.Tensor):
+                self.logger.debug(f"  {key}:")
+                self.logger.debug(f"    Shape: {value.shape}")
+                self.logger.debug(f"    Dtype: {value.dtype}")
+                self.logger.debug(f"    Device: {value.device}")
+                
+                # Only compute stats for floating point tensors
+                if value.dtype in [torch.float16, torch.float32, torch.float64]:
+                    if value.numel() > 0:
+                        self.logger.debug(f"    Range: [{value.min().item():.4f}, {value.max().item():.4f}]")
+                        self.logger.debug(f"    Mean: {value.mean().item():.4f}")
+                        self.logger.debug(f"    Std: {value.std().item():.4f}")
+                        self.logger.debug(f"    Has NaN: {torch.isnan(value).any().item()}")
+                        self.logger.debug(f"    Has Inf: {torch.isinf(value).any().item()}")
+            elif isinstance(value, list):
+                if len(value) > 0:
+                    if isinstance(value[0], torch.Tensor):
+                        self.logger.debug(f"  {key}: List of {len(value)} tensors")
+                        self.logger.debug(f"    First tensor shape: {value[0].shape}")
+                    else:
+                        self.logger.debug(f"  {key}: List of {len(value)} {type(value[0]).__name__}")
+                else:
+                    self.logger.debug(f"  {key}: Empty list")
+            elif isinstance(value, dict):
+                self.logger.debug(f"  {key}: Dict with keys {list(value.keys())}")
+            else:
+                self.logger.debug(f"  {key}: {type(value).__name__}")
     
     def _move_batch_to_device(self, batch: Dict) -> Dict:
         """Move batch tensors to device."""
@@ -939,6 +1080,14 @@ class RefDetTrainer:
             print(f"Mixed training enabled: {(1-triplet_ratio)*100:.0f}% detection + {triplet_ratio*100:.0f}% triplet")
         print(f"{'='*60}\n")
         
+        # Print model summary if debug mode
+        if self.debug_mode:
+            self.print_model_summary()
+            self.logger.debug(f"\nInitial learning rate: {self.optimizer.param_groups[0]['lr']:.6e}")
+            self.logger.debug(f"Optimizer: {type(self.optimizer).__name__}")
+            if self.scheduler is not None:
+                self.logger.debug(f"Scheduler: {type(self.scheduler).__name__}")
+        
         for epoch in range(self.epoch + 1, num_epochs + 1):
             start_time = time.time()
             
@@ -1040,3 +1189,84 @@ class RefDetTrainer:
         print(f"  Best ST-IoU: {self.best_st_iou:.4f}")
         print(f"  Best validation loss: {self.best_val_loss:.4f}")
         print(f"  Total steps: {self.global_step}")
+    
+    def get_model_summary(self) -> Dict:
+        """
+        Get detailed model summary for debugging.
+        
+        Returns:
+            summary: Dict containing model architecture and parameter counts
+        """
+        total_params = sum(p.numel() for p in self.model.parameters())
+        trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
+        frozen_params = total_params - trainable_params
+        
+        # Get parameter counts by module
+        module_params = {}
+        for name, module in self.model.named_children():
+            module_total = sum(p.numel() for p in module.parameters())
+            module_trainable = sum(p.numel() for p in module.parameters() if p.requires_grad)
+            module_params[name] = {
+                'total': module_total,
+                'trainable': module_trainable,
+                'frozen': module_total - module_trainable
+            }
+        
+        summary = {
+            'total_parameters': total_params,
+            'trainable_parameters': trainable_params,
+            'frozen_parameters': frozen_params,
+            'module_parameters': module_params,
+            'device': str(self.device),
+            'mixed_precision': self.mixed_precision,
+            'gradient_accumulation_steps': self.gradient_accumulation_steps,
+            'gradient_clip_norm': self.gradient_clip_norm,
+        }
+        
+        return summary
+    
+    def print_model_summary(self):
+        """Print detailed model summary."""
+        summary = self.get_model_summary()
+        
+        print(f"\n{'='*70}")
+        print(f"MODEL SUMMARY")
+        print(f"{'='*70}")
+        print(f"Total Parameters: {summary['total_parameters']:,}")
+        print(f"Trainable Parameters: {summary['trainable_parameters']:,} ({summary['trainable_parameters']/summary['total_parameters']*100:.2f}%)")
+        print(f"Frozen Parameters: {summary['frozen_parameters']:,} ({summary['frozen_parameters']/summary['total_parameters']*100:.2f}%)")
+        print(f"\nModule Breakdown:")
+        for module_name, params in summary['module_parameters'].items():
+            print(f"  {module_name}:")
+            print(f"    Total: {params['total']:,}")
+            print(f"    Trainable: {params['trainable']:,}")
+            print(f"    Frozen: {params['frozen']:,}")
+        print(f"\nTraining Configuration:")
+        print(f"  Device: {summary['device']}")
+        print(f"  Mixed Precision: {summary['mixed_precision']}")
+        print(f"  Gradient Accumulation: {summary['gradient_accumulation_steps']}")
+        print(f"  Gradient Clipping: {summary['gradient_clip_norm']}")
+        print(f"{'='*70}\n")
+    
+    def log_parameter_statistics(self):
+        """Log detailed parameter statistics for debugging."""
+        if not self.debug_mode:
+            return
+        
+        self.logger.debug(f"\n{'='*70}")
+        self.logger.debug(f"PARAMETER STATISTICS")
+        self.logger.debug(f"{'='*70}")
+        
+        for name, param in self.model.named_parameters():
+            if param.requires_grad:
+                self.logger.debug(f"\n{name}:")
+                self.logger.debug(f"  Shape: {param.shape}")
+                self.logger.debug(f"  Range: [{param.min().item():.4e}, {param.max().item():.4e}]")
+                self.logger.debug(f"  Mean: {param.mean().item():.4e}")
+                self.logger.debug(f"  Std: {param.std().item():.4e}")
+                self.logger.debug(f"  Norm: {param.norm().item():.4e}")
+                
+                if param.grad is not None:
+                    self.logger.debug(f"  Grad Range: [{param.grad.min().item():.4e}, {param.grad.max().item():.4e}]")
+                    self.logger.debug(f"  Grad Mean: {param.grad.mean().item():.4e}")
+                    self.logger.debug(f"  Grad Norm: {param.grad.norm().item():.4e}")

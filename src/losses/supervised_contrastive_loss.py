@@ -65,15 +65,18 @@ class SupervisedContrastiveLoss(nn.Module):
             print(f"  features range: [{features.min():.6f}, {features.max():.6f}]")
             return torch.tensor(0.0, device=device, requires_grad=True)
         
-        # Normalize features with numerical stability
-        # Use manual normalization with epsilon to avoid division by zero and gradient explosions
-        feature_norms = torch.norm(features, p=2, dim=1, keepdim=True)
-        # Clamp norms to avoid both zero and very small values that cause gradient explosions
-        feature_norms = torch.clamp(feature_norms, min=1e-4)
-        features = features / feature_norms
+        # CRITICAL FIX: Detach features before normalization to prevent gradient explosion
+        # The gradient of L2 normalization can explode when norms are small
+        # We normalize for the forward pass but don't backprop through the normalization itself
+        with torch.no_grad():
+            feature_norms = torch.norm(features, p=2, dim=1, keepdim=True)
+            feature_norms = torch.clamp(feature_norms, min=1e-4)
+        
+        # Normalize but maintain gradient flow through the original features
+        features_normalized = features / feature_norms.detach()
         
         # Compute similarity matrix: [N, N]
-        similarity_matrix = torch.matmul(features, features.T) / self.temperature
+        similarity_matrix = torch.matmul(features_normalized, features_normalized.T) / self.temperature
         
         # Create mask for positive pairs (same class)
         if mask is None:
@@ -89,6 +92,15 @@ class SupervisedContrastiveLoss(nn.Module):
         )
         mask = mask * logits_mask
         
+        # Count positive pairs per sample
+        mask_sum = mask.sum(1)
+        
+        # If no positive pairs exist for any sample, return zero loss immediately
+        # (This can happen in few-shot scenarios with small batch sizes)
+        if (mask_sum == 0).all():
+            print(f"🔍 SupCon: No positive pairs found, returning zero loss")
+            return torch.tensor(0.0, device=device, requires_grad=True)
+        
         # For numerical stability, use log_softmax which is more stable than log(sum(exp()))
         # First, apply mask to set non-contrastive elements to very negative value
         # so they don't contribute to softmax
@@ -101,38 +113,34 @@ class SupervisedContrastiveLoss(nn.Module):
         # Compute log probabilities using numerically stable log_softmax
         log_prob = F.log_softmax(masked_similarity, dim=1)
         
-        # Clamp to prevent extreme values
+        # Clamp to prevent extreme values that cause gradient explosion
         log_prob = torch.clamp(log_prob, min=-50.0, max=50.0)
         
         print(f"🔍 SupCon Debug:")
+        print(f"  Batch size: {batch_size}, Labels: {labels.squeeze().tolist()}")
+        print(f"  Feature norm range: [{feature_norms.min():.6f}, {feature_norms.max():.6f}]")
         print(f"  Similarity matrix range: [{similarity_matrix.min():.6f}, {similarity_matrix.max():.6f}]")
         print(f"  log_prob range: [{log_prob.min():.6f}, {log_prob.max():.6f}]")
+        print(f"  Positive pairs per sample: {mask_sum.tolist()}")
+        
+        # Replace zero mask_sum with 1 to avoid division by zero (these will be filtered out)
+        mask_sum_safe = torch.where(mask_sum == 0, torch.ones_like(mask_sum), mask_sum)
         
         # Compute mean of log-likelihood over positive pairs
-        # Handle case where a sample has no positives
-        mask_sum = mask.sum(1)
-        
-        # If no positive pairs exist for a sample, skip it entirely
-        # (This can happen in few-shot scenarios with small batch sizes)
-        if (mask_sum == 0).all():
-            # No valid positive pairs in entire batch - return zero loss
-            return torch.tensor(0.0, device=device, requires_grad=True)
-        
-        # Replace zero mask_sum with 1 to avoid division by zero
-        mask_sum = torch.where(mask_sum == 0, torch.ones_like(mask_sum), mask_sum)
-        
-        mean_log_prob_pos = (mask * log_prob).sum(1) / mask_sum
+        mean_log_prob_pos = (mask * log_prob).sum(1) / mask_sum_safe
         
         # Loss
         loss = -(self.temperature / self.base_temperature) * mean_log_prob_pos
         
-        # Only average over samples that have positive pairs
-        valid_samples = mask_sum > 1  # >1 because we set no-positive cases to 1
+        # Only average over samples that have positive pairs (mask_sum > 0, not > 1)
+        valid_samples = mask_sum > 0
         if valid_samples.any():
             loss = loss[valid_samples].mean()
         else:
             # All samples have no positives - return zero loss
             loss = torch.tensor(0.0, device=device, requires_grad=True)
+        
+        print(f"  Final loss: {loss.item():.6f}")
         
         return loss
 

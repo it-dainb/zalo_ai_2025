@@ -97,6 +97,10 @@ class SupervisedContrastiveLoss(nn.Module):
         
         log_prob = logits - torch.log(exp_sum)
         
+        # ⚠️ CRITICAL: Clamp log_prob BEFORE using it to prevent -inf values
+        # that cause NaN gradients during backprop
+        log_prob = torch.clamp(log_prob, min=-50.0, max=50.0)
+        
         # Compute mean of log-likelihood over positive pairs
         # Handle case where a sample has no positives
         mask_sum = mask.sum(1)
@@ -111,10 +115,6 @@ class SupervisedContrastiveLoss(nn.Module):
         mask_sum = torch.where(mask_sum == 0, torch.ones_like(mask_sum), mask_sum)
         
         mean_log_prob_pos = (mask * log_prob).sum(1) / mask_sum
-        
-        # Clamp to prevent extreme values that cause NaN gradients
-        # This handles cases where log_prob is very negative (-inf)
-        mean_log_prob_pos = torch.clamp(mean_log_prob_pos, min=-50.0, max=50.0)
         
         # Loss
         loss = -(self.temperature / self.base_temperature) * mean_log_prob_pos

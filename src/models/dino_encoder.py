@@ -119,6 +119,14 @@ class DINOSupportEncoder(nn.Module):
             nn.GELU(),
         )
         
+        # Triplet loss projection head (384 -> 256)
+        # This learnable projection matches DINO features to YOLOv8 global feature dim
+        # Better than fixed pooling: network learns optimal 256-dim representation
+        self.triplet_proj = nn.Sequential(
+            nn.Linear(self.feat_dim, 256),  # 384 -> 256
+            nn.LayerNorm(256),
+        )
+        
         # Store data config for transforms
         self.data_config = timm.data.resolve_model_data_config(self.dino)
         
@@ -233,7 +241,7 @@ class DINOSupportEncoder(nn.Module):
                 - 'p3': (B, 64) projection for P3 scale (matches YOLOv8n)
                 - 'p4': (B, 128) projection for P4 scale (matches YOLOv8n)
                 - 'p5': (B, 256) projection for P5 scale (matches YOLOv8n)
-                - 'global_feat': (B, 384) raw CLS token for triplet loss (if return_global_feat=True)
+                - 'global_feat': (B, 256) projected feature for triplet loss (if return_global_feat=True)
         
         Example:
             >>> encoder = DINOSupportEncoder()
@@ -243,9 +251,6 @@ class DINOSupportEncoder(nn.Module):
         """
         # Extract CLS token features
         prototype = self.extract_features(support_images)  # (B, 384)
-        
-        # Store raw CLS token before normalization for triplet loss
-        raw_cls_token = prototype.clone() if return_global_feat else None
         
         # L2 normalization for cosine similarity
         if normalize:
@@ -273,8 +278,12 @@ class DINOSupportEncoder(nn.Module):
         }
         
         # Add global feature for triplet loss if requested
+        # Use learnable projection to match YOLOv8 global feature dimension (256)
         if return_global_feat:
-            output['global_feat'] = raw_cls_token
+            # Project raw CLS token: 384 -> 256
+            # This learnable transformation allows network to learn optimal feature compression
+            global_feat = self.triplet_proj(prototype)  # (B, 256)
+            output['global_feat'] = global_feat
         
         return output
     
@@ -289,10 +298,10 @@ class DINOSupportEncoder(nn.Module):
         
         Args:
             support_images: List of K support images, each (1, 3, 256, 256)
-            return_global_feat: Whether to return raw CLS token for triplet loss (default: False)
+            return_global_feat: Whether to return projected global feature (256-dim) for triplet loss (default: False)
         
         Returns:
-            Averaged prototypes for all scales, optionally including global_feat
+            Averaged prototypes for all scales, optionally including global_feat (256-dim)
         """
         all_prototypes = []
         

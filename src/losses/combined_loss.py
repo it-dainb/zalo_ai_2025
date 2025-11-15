@@ -69,11 +69,12 @@ class ReferenceBasedDetectionLoss(nn.Module):
         self.prototype_loss = PrototypeContrastiveLoss(temperature=0.07)
         self.cpe_loss = SimplifiedCPELoss(temperature=0.1)
         
-        # Triplet loss (stage 3) - prevents catastrophic forgetting
+        # Triplet loss (stage 2+) - prevents catastrophic forgetting
+        # Use cosine distance for normalized features (more stable than euclidean)
         if use_batch_hard_triplet:
-            self.triplet_loss = BatchHardTripletLoss(margin=0.3, distance='euclidean')
+            self.triplet_loss = BatchHardTripletLoss(margin=0.3, distance='cosine')
         else:
-            self.triplet_loss = TripletLoss(margin=0.3, distance='euclidean')
+            self.triplet_loss = TripletLoss(margin=0.3, distance='cosine')
         
         # Set weights based on stage
         self.weights = self._get_stage_weights(

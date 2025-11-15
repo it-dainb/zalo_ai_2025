@@ -705,22 +705,12 @@ def prepare_triplet_loss_inputs(
             "Make sure to call model with return_features=True."
         )
     
-    # Project anchor features to match query feature dimension if needed
-    # Anchor: (B, 384) from DINOv2 -> project to (B, 256)
-    # Query: (B, 256) from YOLOv8 backbone
-    anchor_dim = anchor_features.shape[-1]
-    query_dim = query_global_feat.shape[-1]
-    
-    if anchor_dim != query_dim:
-        # Simple linear projection: project to lower dimension
-        if anchor_dim > query_dim:
-            # Project down: take first query_dim dimensions (truncate)
-            anchor_features = anchor_features[..., :query_dim]
-        else:
-            # Pad up: zero-pad to match query_dim
-            pad_size = query_dim - anchor_dim
-            padding = F.pad(anchor_features, (0, pad_size), mode='constant', value=0)
-            anchor_features = padding
+    # Normalize all features before comparison (critical for stability)
+    # This prevents gradient explosion from magnitude differences
+    # Use L2 normalization to make features unit-length
+    # Both anchor (DINO with learnable projection) and query (YOLOv8) are now 256-dim
+    anchor_features = torch.nn.functional.normalize(anchor_features, p=2, dim=-1)  # (B, 256)
+    query_global_feat = torch.nn.functional.normalize(query_global_feat, p=2, dim=-1)  # (B, 256)
     
     # Split query features into positive and negative
     # Batch structure: [positive_1, negative_1, positive_2, negative_2, ...]

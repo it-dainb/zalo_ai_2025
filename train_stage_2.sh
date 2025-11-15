@@ -35,4 +35,4 @@ python train.py \
     --wandb_entity it-dainb \
     --wandb_name stage_2 \
     --val_st_iou_cache  ./datasets/test/annotations/ \
-    --gradient_clip_norm 10.0
+    --gradient_clip_norm 5.0

@@ -32,6 +32,159 @@ except ImportError:
     wandb = None
 
 
+def postprocess_model_outputs(
+    model_outputs: Dict,
+    mode: str = 'prototype',
+    conf_thres: float = 0.25,
+    iou_thres: float = 0.45,
+    max_det: int = 300,
+) -> Dict[str, torch.Tensor]:
+    """
+    Post-process raw model outputs to extract final predictions.
+    Follows ultralytics YOLOv8 inference pipeline.
+    
+    Args:
+        model_outputs: Raw model outputs from YOLOv8nRefDet
+        mode: Detection mode ('standard', 'prototype', 'dual')
+        conf_thres: Confidence threshold
+        iou_thres: IoU threshold for NMS
+        max_det: Maximum number of detections
+    
+    Returns:
+        Dictionary with:
+            - 'pred_bboxes': (B, N, 4) predicted boxes in xyxy format
+            - 'pred_scores': (B, N) prediction confidence scores
+            - 'pred_class_ids': (B, N) predicted class IDs
+    """
+    # Select which head outputs to use based on mode
+    if mode == 'prototype' and 'prototype_boxes' in model_outputs:
+        boxes_list = model_outputs['prototype_boxes']  # List of (B, 4*(reg_max+1), H, W) per scale
+        scores_list = model_outputs['prototype_sim']   # List of (B, K, H, W) per scale
+    elif mode == 'standard' and 'standard_boxes' in model_outputs:
+        boxes_list = model_outputs['standard_boxes']   # List of (B, 4*(reg_max+1), H, W) per scale
+        scores_list = model_outputs['standard_cls']    # List of (B, nc, H, W) per scale
+    elif mode == 'dual':
+        # Use prototype head if available, otherwise standard
+        if 'prototype_boxes' in model_outputs:
+            boxes_list = model_outputs['prototype_boxes']
+            scores_list = model_outputs['prototype_sim']
+        elif 'standard_boxes' in model_outputs:
+            boxes_list = model_outputs['standard_boxes']
+            scores_list = model_outputs['standard_cls']
+        else:
+            raise ValueError("No detection outputs found in model_outputs")
+    else:
+        raise ValueError(f"Invalid mode '{mode}' or missing outputs in model_outputs")
+    
+    device = boxes_list[0].device
+    batch_size = boxes_list[0].shape[0]
+    
+    # Strides for each scale [P2, P3, P4, P5]
+    strides = torch.tensor([4, 8, 16, 32], device=device, dtype=torch.float32)
+    reg_max = boxes_list[0].shape[1] // 4 - 1  # Extract reg_max from output shape
+    
+    # Concatenate all scales following ultralytics format
+    # boxes: (B, 4*(reg_max+1), H, W) -> (B, 4*(reg_max+1), H*W) for each scale
+    # scores: (B, K, H, W) -> (B, K, H*W) for each scale
+    box_list_flat = []
+    scores_list_flat = []
+    
+    for boxes, scores in zip(boxes_list, scores_list):
+        B, C, H, W = boxes.shape
+        box_list_flat.append(boxes.view(B, C, -1))  # (B, 4*(reg_max+1), H*W)
+        scores_list_flat.append(scores.view(B, scores.shape[1], -1))  # (B, K, H*W)
+    
+    # Concatenate across scales: (B, C, total_anchors)
+    box_cat = torch.cat(box_list_flat, dim=2)  # (B, 4*(reg_max+1), total_anchors)
+    scores_cat = torch.cat(scores_list_flat, dim=2)  # (B, K, total_anchors)
+    
+    # Generate anchor points using ultralytics method
+    from src.models.dual_head import DFL
+    dfl = DFL(reg_max + 1).to(device)
+    
+    anchor_points_list = []
+    stride_tensor_list = []
+    for i, (boxes_scale, stride) in enumerate(zip(boxes_list, strides)):
+        _, _, h, w = boxes_scale.shape
+        # Create grid (following ultralytics with 0.5 offset)
+        sy = torch.arange(h, device=device, dtype=torch.float32) + 0.5
+        sx = torch.arange(w, device=device, dtype=torch.float32) + 0.5
+        sy, sx = torch.meshgrid(sy, sx, indexing='ij')
+        anchor_points_list.append(torch.stack((sx, sy), -1).view(-1, 2))
+        stride_tensor_list.append(torch.full((h * w, 1), stride.item(), device=device, dtype=torch.float32))
+    
+    anchor_points = torch.cat(anchor_points_list)  # (total_anchors, 2)
+    stride_tensor = torch.cat(stride_tensor_list)  # (total_anchors, 1)
+    
+    # Apply DFL to decode boxes: (B, 4*(reg_max+1), total_anchors) -> (B, 4, total_anchors)
+    dbox = dfl(box_cat)  # DFL expects (B, C, A) format
+    
+    # Decode bboxes using dist2bbox (following ultralytics)
+    from src.training.loss_utils import dist2bbox
+    # dbox: (B, 4, total_anchors), anchor_points: (total_anchors, 2)
+    # Need to permute for dist2bbox: (B, total_anchors, 4)
+    dbox = dbox.permute(0, 2, 1)  # (B, total_anchors, 4)
+    decoded_boxes = dist2bbox(dbox, anchor_points.unsqueeze(0), xywh=False, dim=-1)  # (B, total_anchors, 4) xyxy
+    decoded_boxes = decoded_boxes * stride_tensor.unsqueeze(0)  # Scale by stride: (B, total_anchors, 4) * (1, total_anchors, 1)
+    
+    # Apply sigmoid to scores and get class predictions
+    scores_cat = scores_cat.sigmoid().permute(0, 2, 1)  # (B, total_anchors, K)
+    max_scores, class_ids = scores_cat.max(dim=-1)  # (B, total_anchors)
+    
+    # Apply confidence threshold and NMS per batch
+    final_boxes = []
+    final_scores = []
+    final_class_ids = []
+    
+    for b in range(batch_size):
+        # Filter by confidence
+        conf_mask = max_scores[b] >= conf_thres
+        boxes_b = decoded_boxes[b][conf_mask]
+        scores_b = max_scores[b][conf_mask]
+        class_ids_b = class_ids[b][conf_mask]
+        
+        if len(boxes_b) == 0:
+            # No detections above threshold
+            final_boxes.append(torch.zeros((0, 4), device=device))
+            final_scores.append(torch.zeros(0, device=device))
+            final_class_ids.append(torch.zeros(0, dtype=torch.long, device=device))
+            continue
+        
+        # Apply NMS
+        from torchvision.ops import nms
+        keep_indices = nms(boxes_b, scores_b, iou_thres)
+        keep_indices = keep_indices[:max_det]  # Limit to max_det
+        
+        final_boxes.append(boxes_b[keep_indices])
+        final_scores.append(scores_b[keep_indices])
+        final_class_ids.append(class_ids_b[keep_indices])
+    
+    # Pad to same length for batching
+    max_dets = max(len(b) for b in final_boxes) if final_boxes else 0
+    max_dets = min(max_dets, max_det)
+    
+    if max_dets == 0:
+        max_dets = 1  # At least 1 to avoid empty tensors
+    
+    padded_boxes = torch.zeros((batch_size, max_dets, 4), device=device)
+    padded_scores = torch.zeros((batch_size, max_dets), device=device)
+    padded_class_ids = torch.zeros((batch_size, max_dets), dtype=torch.long, device=device)
+    
+    for b in range(batch_size):
+        n = len(final_boxes[b])
+        if n > 0:
+            n = min(n, max_dets)
+            padded_boxes[b, :n] = final_boxes[b][:n]
+            padded_scores[b, :n] = final_scores[b][:n]
+            padded_class_ids[b, :n] = final_class_ids[b][:n]
+    
+    return {
+        'pred_bboxes': padded_boxes,
+        'pred_scores': padded_scores,
+        'pred_class_ids': padded_class_ids,
+    }
+
+
 class RefDetTrainer:
     """
     Training pipeline for YOLOv8n-RefDet.
@@ -625,9 +778,39 @@ class RefDetTrainer:
                 # Move batch to device
                 batch = self._move_batch_to_device(batch)
                 
-                # Forward pass for loss
+                # Prepare support images
+                support_images = batch['support_images']
+                N, K, C, H, W = support_images.shape
+                support_flat = support_images.reshape(N * K, C, H, W)
+                
+                # Set reference images for both loss and metrics
+                self.model.set_reference_images(
+                    support_flat,
+                    average_prototypes=True,
+                    n_way=N,
+                    n_support=K
+                )
+                
+                # Single forward pass for both loss and metrics
                 with autocast(device_type='cuda' if torch.cuda.is_available() else 'cpu', enabled=self.mixed_precision):
-                    loss, losses_dict = self._forward_step(batch)
+                    # Get raw model outputs
+                    raw_outputs = self.model(
+                        query_image=batch['query_images'],
+                        mode='dual',  # Use dual head for comprehensive evaluation
+                        use_cache=True,
+                        class_ids=batch.get('class_ids', None),
+                    )
+                    
+                    # Compute loss using raw outputs
+                    from src.training.loss_utils import prepare_loss_inputs
+                    loss_inputs = prepare_loss_inputs(
+                        model_outputs=raw_outputs,
+                        batch=batch,
+                        stage=self.loss_fn.stage,
+                    )
+                    losses = self.loss_fn(**loss_inputs)
+                    loss = losses['total_loss']
+                    losses_dict = {k: v.item() for k, v in losses.items() if k != 'total_loss'}
                 
                 # Accumulate loss metrics
                 total_loss += loss.item()
@@ -639,16 +822,13 @@ class RefDetTrainer:
                 
                 # Compute detection metrics if requested
                 if compute_detection_metrics:
-                    # Forward pass for predictions
-                    support_images = batch['support_images']
-                    N, K, C, H, W = support_images.shape
-                    support_flat = support_images.reshape(N * K, C, H, W)
-                    self.model.set_reference_images(support_flat, average_prototypes=True)
-                    
-                    model_outputs = self.model(
-                        query_image=batch['query_images'],
+                    # Post-process raw outputs to get final predictions
+                    # Use prototype head outputs for detection metrics
+                    model_outputs = postprocess_model_outputs(
+                        raw_outputs,
                         mode='prototype',
-                        use_cache=True,
+                        conf_thres=0.25,
+                        iou_thres=0.45,
                     )
                     
                     # Extract predictions (batch_size, num_boxes, 4/1/1)
@@ -704,20 +884,20 @@ class RefDetTrainer:
                                 all_st_ious.append(float(spatial_iou) if isinstance(spatial_iou, torch.Tensor) else spatial_iou)
                         
                         # Accumulate for mAP computation (always use batch GT for mAP)
-                        # Detach and convert to numpy to avoid memory leak
-                        all_pred_bboxes.append(sample_pred_bboxes)  # Already numpy from line 626
-                        all_pred_scores.append(sample_pred_scores)  # Already numpy from line 627
-                        all_pred_classes.append(sample_pred_classes)  # Already numpy from line 628
-                        # Use batch GT for mAP (not cached, to ensure consistency) - already numpy from line 630
+                        # Already numpy arrays from line 835-837
+                        all_pred_bboxes.append(sample_pred_bboxes)
+                        all_pred_scores.append(sample_pred_scores)
+                        all_pred_classes.append(sample_pred_classes)
+                        # Use batch GT for mAP (not cached, to ensure consistency)
                         all_gt_bboxes.append(gt_bboxes_list[i])
                         all_gt_classes.append(gt_classes_list[i])
                     
                     # Memory cleanup after detection metrics computation
                     del model_outputs, pred_bboxes, pred_scores, pred_classes
-                    del support_images, support_flat, gt_bboxes_list, gt_classes_list
+                    del gt_bboxes_list, gt_classes_list
                 
                 # Memory cleanup after each validation batch
-                del batch, loss, losses_dict
+                del batch, loss, losses_dict, raw_outputs, support_images, support_flat
         
         # Average loss metrics
         avg_metrics = {

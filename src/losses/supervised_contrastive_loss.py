@@ -59,17 +59,25 @@ class SupervisedContrastiveLoss(nn.Module):
         device = features.device
         batch_size = features.shape[0]
         
+        # Check inputs for NaN/Inf
+        if torch.isnan(features).any() or torch.isinf(features).any():
+            print(f"⚠️ SupCon INPUT: features has NaN/Inf!")
+            print(f"  features range: [{features.min():.6f}, {features.max():.6f}]")
+            return torch.tensor(0.0, device=device, requires_grad=True)
+        
         # Normalize features
-        features = F.normalize(features, p=2, dim=1)
+        # Check for zero-norm features which cause NaN in normalization gradients
+        feature_norms = torch.norm(features, p=2, dim=1, keepdim=True)
+        if (feature_norms == 0).any():
+            print(f"⚠️ SupCon: Found {(feature_norms == 0).sum().item()} zero-norm features!")
+            # Add small epsilon to avoid division by zero in gradient
+            feature_norms = torch.clamp(feature_norms, min=1e-8)
+            features = features / feature_norms
+        else:
+            features = F.normalize(features, p=2, dim=1)
         
         # Compute similarity matrix: [N, N]
         similarity_matrix = torch.matmul(features, features.T) / self.temperature
-        
-        # DEBUG: Check for issues in similarity matrix
-        if torch.isnan(similarity_matrix).any() or torch.isinf(similarity_matrix).any():
-            print(f"⚠️ SupCon: similarity_matrix has NaN/Inf!")
-            print(f"  features range: [{features.min():.6f}, {features.max():.6f}]")
-            print(f"  features norm: {torch.norm(features, dim=1).mean():.6f}")
         
         # Create mask for positive pairs (same class)
         if mask is None:
@@ -85,41 +93,24 @@ class SupervisedContrastiveLoss(nn.Module):
         )
         mask = mask * logits_mask
         
-        # DEBUG: Check positive pairs
-        num_positives = mask.sum(1)
-        print(f"🔍 SupCon Debug:")
-        print(f"  Batch size: {batch_size}")
-        print(f"  Unique labels: {torch.unique(labels).tolist()}")
-        print(f"  Positive pairs per sample: {num_positives.tolist()}")
+        # For numerical stability, use log_softmax which is more stable than log(sum(exp()))
+        # First, apply mask to set non-contrastive elements to very negative value
+        # so they don't contribute to softmax
+        masked_similarity = torch.where(
+            logits_mask.bool(),
+            similarity_matrix,
+            torch.full_like(similarity_matrix, -1e9)
+        )
         
-        # For numerical stability
-        logits_max, _ = torch.max(similarity_matrix, dim=1, keepdim=True)
-        logits = similarity_matrix - logits_max.detach()
+        # Compute log probabilities using numerically stable log_softmax
+        log_prob = F.log_softmax(masked_similarity, dim=1)
         
-        print(f"  Similarity matrix range: [{similarity_matrix.min():.6f}, {similarity_matrix.max():.6f}]")
-        print(f"  Logits range (after max subtraction): [{logits.min():.6f}, {logits.max():.6f}]")
-        
-        # Compute log_prob
-        exp_logits = torch.exp(logits) * logits_mask
-        
-        print(f"  exp_logits range: [{exp_logits.min():.6f}, {exp_logits.max():.6f}]")
-        
-        # Clamp for numerical stability (avoid log(0))
-        exp_sum = torch.clamp(exp_logits.sum(1, keepdim=True), min=1e-6)
-        
-        print(f"  exp_sum range: [{exp_sum.min():.6f}, {exp_sum.max():.6f}]")
-        
-        log_prob = logits - torch.log(exp_sum)
-        
-        print(f"  log_prob range (before clamp): [{log_prob.min():.6f}, {log_prob.max():.6f}]")
-        print(f"  log_prob has inf: {torch.isinf(log_prob).any().item()}")
-        print(f"  log_prob has nan: {torch.isnan(log_prob).any().item()}")
-        
-        # ⚠️ CRITICAL: Clamp log_prob BEFORE using it to prevent -inf values
-        # that cause NaN gradients during backprop
+        # Clamp to prevent extreme values
         log_prob = torch.clamp(log_prob, min=-50.0, max=50.0)
         
-        print(f"  log_prob range (after clamp): [{log_prob.min():.6f}, {log_prob.max():.6f}]")
+        print(f"🔍 SupCon Debug:")
+        print(f"  Similarity matrix range: [{similarity_matrix.min():.6f}, {similarity_matrix.max():.6f}]")
+        print(f"  log_prob range: [{log_prob.min():.6f}, {log_prob.max():.6f}]")
         
         # Compute mean of log-likelihood over positive pairs
         # Handle case where a sample has no positives

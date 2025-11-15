@@ -48,7 +48,10 @@ class DFL(nn.Module):
     
     def forward(self, x):
         b, c, a = x.shape  # batch, channels, anchors
-        return self.conv(x.view(b, 4, self.c1, a).transpose(2, 1).softmax(1)).view(b, 4, a)
+        # Cast input to match conv weight dtype for mixed precision compatibility
+        x_reshaped = x.view(b, 4, self.c1, a).transpose(2, 1).softmax(1)
+        x_reshaped = x_reshaped.to(self.conv.weight.dtype)
+        return self.conv(x_reshaped).view(b, 4, a)
 
 
 class StandardDetectionHead(nn.Module):

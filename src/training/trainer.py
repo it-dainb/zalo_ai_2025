@@ -515,17 +515,24 @@ class RefDetTrainer:
                 is_detection = batch_to_use.get('batch_type') == 'detection'
                 if is_detection and not self._detection_gradient_check_done and self.epoch == 1:
                     print(f"\n🔍 Performing per-loss gradient check on first DETECTION batch (batch_idx={batch_idx})...")
+                    
+                    # Use stored tensor losses (not the .item() converted ones in losses_dict)
+                    loss_tensors = getattr(self, '_loss_tensors_for_check', {})
+                    print(f"Available loss components: {list(loss_tensors.keys())}")
                     self._detection_gradient_check_done = True
                     self.optimizer.zero_grad()
                     
                     # Test each loss component individually
                     loss_test_results = {}
-                    for loss_name, loss_value in losses_dict.items():
-                        if loss_name == 'total_loss' or not isinstance(loss_value, torch.Tensor):
+                    for loss_name, loss_value in loss_tensors.items():
+                        if not isinstance(loss_value, torch.Tensor):
+                            print(f"  Skipping {loss_name} (not a tensor)")
                             continue
                         if loss_value.item() == 0.0:
                             loss_test_results[loss_name] = "SKIPPED (zero)"
                             continue
+                        
+                        print(f"  Testing {loss_name} (value={loss_value.item():.6f})...")
                         
                         # Clear gradients
                         self.optimizer.zero_grad()
@@ -555,8 +562,10 @@ class RefDetTrainer:
                         print(f"  {loss_name}: {result}")
                     print()
                     
-                    # Clear gradients before actual training
+                    # Clear gradients and stored tensors before actual training
                     self.optimizer.zero_grad()
+                    if hasattr(self, '_loss_tensors_for_check'):
+                        delattr(self, '_loss_tensors_for_check')
                 
                 # Backward pass
                 if self.mixed_precision:
@@ -1124,6 +1133,10 @@ class RefDetTrainer:
         # Extract total loss and components
         total_loss = losses['total_loss']
         losses_dict = {k: v.item() for k, v in losses.items() if k != 'total_loss'}
+        
+        # Store original tensor losses for gradient checking (only in epoch 1)
+        if self.epoch == 1 and not hasattr(self, '_loss_tensors_for_check'):
+            self._loss_tensors_for_check = {k: v for k, v in losses.items() if k != 'total_loss'}
         
         return total_loss, losses_dict
     

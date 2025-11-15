@@ -388,6 +388,7 @@ def create_loss_fn(args):
         cpe_weight=args.cpe_weight,
         triplet_weight=args.triplet_weight,
         use_batch_hard_triplet=args.use_batch_hard_triplet,
+        debug_mode=args.debug,
     )
     
     print(f"Loss weights:")

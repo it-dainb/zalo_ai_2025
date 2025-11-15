@@ -41,6 +41,7 @@ class ReferenceBasedDetectionLoss(nn.Module):
         triplet_weight (float): Weight for triplet loss (Stage 3 only)
         reg_max (int): Maximum regression value for DFL
         use_batch_hard_triplet (bool): Use BatchHardTripletLoss instead of regular TripletLoss
+        debug_mode (bool): Enable debug prints in SupCon losses
     """
     
     def __init__(
@@ -53,11 +54,13 @@ class ReferenceBasedDetectionLoss(nn.Module):
         cpe_weight=0.5,
         triplet_weight=0.2,
         reg_max=16,
-        use_batch_hard_triplet=False
+        use_batch_hard_triplet=False,
+        debug_mode=False
     ):
         super().__init__()
         
         self.stage = stage
+        self.debug_mode = debug_mode
         
         # Core detection losses (always active)
         self.bbox_loss = WIoULoss(monotonous=True)
@@ -65,8 +68,8 @@ class ReferenceBasedDetectionLoss(nn.Module):
         self.dfl_loss = DFLoss(reg_max=reg_max)
         
         # Contrastive losses (stage 2+)
-        self.supcon_loss = SupervisedContrastiveLoss(temperature=0.07)
-        self.prototype_loss = PrototypeContrastiveLoss(temperature=0.07)
+        self.supcon_loss = SupervisedContrastiveLoss(temperature=0.07, debug_mode=debug_mode)
+        self.prototype_loss = PrototypeContrastiveLoss(temperature=0.07, debug_mode=debug_mode)
         self.cpe_loss = SimplifiedCPELoss(temperature=0.1)
         
         # Triplet loss (stage 2+) - prevents catastrophic forgetting

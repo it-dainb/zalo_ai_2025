@@ -37,10 +37,11 @@ class SupervisedContrastiveLoss(nn.Module):
         base_temperature (float): Base temperature for normalization
     """
     
-    def __init__(self, temperature=0.07, base_temperature=0.07):
+    def __init__(self, temperature=0.07, base_temperature=0.07, debug_mode=False):
         super().__init__()
         self.temperature = temperature
         self.base_temperature = base_temperature
+        self.debug_mode = debug_mode
     
     def forward(self, features, labels, mask=None):
         """
@@ -61,22 +62,28 @@ class SupervisedContrastiveLoss(nn.Module):
         
         # Check inputs for NaN/Inf
         if torch.isnan(features).any() or torch.isinf(features).any():
-            print(f"⚠️ SupCon INPUT: features has NaN/Inf!")
-            print(f"  features range: [{features.min():.6f}, {features.max():.6f}]")
+            if self.debug_mode:
+                print(f"⚠️ SupCon INPUT: features has NaN/Inf!")
+                print(f"  features range: [{features.min():.6f}, {features.max():.6f}]")
             return torch.tensor(0.0, device=device, requires_grad=True)
         
-        # CRITICAL FIX: Detach features before normalization to prevent gradient explosion
-        # The gradient of L2 normalization can explode when norms are small
-        # We normalize for the forward pass but don't backprop through the normalization itself
-        with torch.no_grad():
-            feature_norms = torch.norm(features, p=2, dim=1, keepdim=True)
-            feature_norms = torch.clamp(feature_norms, min=1e-4)
+        # CRITICAL FIX: Use F.cosine_similarity which is more numerically stable
+        # than manual normalization + matmul in mixed precision training
+        # PyTorch's cosine_similarity has built-in epsilon-stabilized implementation
         
-        # Normalize but maintain gradient flow through the original features
-        features_normalized = features / feature_norms.detach()
+        # Expand dimensions for pairwise similarity: [N, 1, D] and [1, N, D]
+        features_i = features.unsqueeze(1)  # [N, 1, D]
+        features_j = features.unsqueeze(0)  # [1, N, D]
         
-        # Compute similarity matrix: [N, N]
-        similarity_matrix = torch.matmul(features_normalized, features_normalized.T) / self.temperature
+        # Broadcast to [N, N, D]
+        features_i_expanded = features_i.expand(batch_size, batch_size, -1)
+        features_j_expanded = features_j.expand(batch_size, batch_size, -1)
+        
+        # Compute cosine similarity matrix: [N, N]
+        similarity_matrix = F.cosine_similarity(features_i_expanded, features_j_expanded, dim=2, eps=1e-6)
+        
+        # Scale by temperature and clamp to prevent extreme logits
+        similarity_matrix = torch.clamp(similarity_matrix / self.temperature, min=-10.0, max=10.0)
         
         # Create mask for positive pairs (same class)
         if mask is None:
@@ -98,7 +105,8 @@ class SupervisedContrastiveLoss(nn.Module):
         # If no positive pairs exist for any sample, return zero loss immediately
         # (This can happen in few-shot scenarios with small batch sizes)
         if (mask_sum == 0).all():
-            print(f"🔍 SupCon: No positive pairs found, returning zero loss")
+            if self.debug_mode:
+                print(f"🔍 SupCon: No positive pairs found, returning zero loss")
             return torch.tensor(0.0, device=device, requires_grad=True)
         
         # For numerical stability, use log_softmax which is more stable than log(sum(exp()))
@@ -116,12 +124,13 @@ class SupervisedContrastiveLoss(nn.Module):
         # Clamp to prevent extreme values that cause gradient explosion
         log_prob = torch.clamp(log_prob, min=-50.0, max=50.0)
         
-        print(f"🔍 SupCon Debug:")
-        print(f"  Batch size: {batch_size}, Labels: {labels.squeeze().tolist()}")
-        print(f"  Feature norm range: [{feature_norms.min():.6f}, {feature_norms.max():.6f}]")
-        print(f"  Similarity matrix range: [{similarity_matrix.min():.6f}, {similarity_matrix.max():.6f}]")
-        print(f"  log_prob range: [{log_prob.min():.6f}, {log_prob.max():.6f}]")
-        print(f"  Positive pairs per sample: {mask_sum.tolist()}")
+        if self.debug_mode:
+            print(f"🔍 SupCon Debug:")
+            print(f"  Batch size: {batch_size}, Labels: {labels.squeeze().tolist()}")
+            print(f"  Feature shape: {features.shape}")
+            print(f"  Similarity matrix range: [{similarity_matrix.min():.6f}, {similarity_matrix.max():.6f}]")
+            print(f"  log_prob range: [{log_prob.min():.6f}, {log_prob.max():.6f}]")
+            print(f"  Positive pairs per sample: {mask_sum.tolist()}")
         
         # Replace zero mask_sum with 1 to avoid division by zero (these will be filtered out)
         mask_sum_safe = torch.where(mask_sum == 0, torch.ones_like(mask_sum), mask_sum)
@@ -140,7 +149,8 @@ class SupervisedContrastiveLoss(nn.Module):
             # All samples have no positives - return zero loss
             loss = torch.tensor(0.0, device=device, requires_grad=True)
         
-        print(f"  Final loss: {loss.item():.6f}")
+        if self.debug_mode:
+            print(f"  Final loss: {loss.item():.6f}")
         
         return loss
 
@@ -156,9 +166,10 @@ class PrototypeContrastiveLoss(nn.Module):
         temperature (float): Temperature scaling parameter
     """
     
-    def __init__(self, temperature=0.07):
+    def __init__(self, temperature=0.07, debug_mode=False):
         super().__init__()
         self.temperature = temperature
+        self.debug_mode = debug_mode
     
     def forward(self, query_features, prototypes, labels):
         """
@@ -177,15 +188,17 @@ class PrototypeContrastiveLoss(nn.Module):
         
         # Check inputs for NaN/Inf
         if torch.isnan(query_features).any() or torch.isinf(query_features).any():
-            print(f"⚠️ PrototypeContrastive INPUT: query_features has NaN/Inf!")
+            if self.debug_mode:
+                print(f"⚠️ PrototypeContrastive INPUT: query_features has NaN/Inf!")
             return torch.tensor(0.0, device=device, requires_grad=True)
         if torch.isnan(prototypes).any() or torch.isinf(prototypes).any():
-            print(f"⚠️ PrototypeContrastive INPUT: prototypes has NaN/Inf!")
+            if self.debug_mode:
+                print(f"⚠️ PrototypeContrastive INPUT: prototypes has NaN/Inf!")
             return torch.tensor(0.0, device=device, requires_grad=True)
         
         # CRITICAL FIX: Use cosine_similarity which is more numerically stable
         # than manual normalization + matmul in mixed precision training
-        # PyTorch's cosine_similarity has built-in stability for gradients
+        # PyTorch's cosine_similarity has built-in epsilon-stabilized implementation
         
         # Compute cosine similarity for each query-prototype pair: [N, K]
         # cosine_similarity expects [N, D] and [K, D], computes [N, K]
@@ -204,21 +217,20 @@ class PrototypeContrastiveLoss(nn.Module):
         # Result: [N, K] where each element is cosine similarity between query i and prototype j
         similarity = F.cosine_similarity(query_repeated, proto_repeated, dim=2, eps=1e-6)
         
-        # Scale by temperature
-        similarity = similarity / self.temperature
+        # Scale by temperature and clamp to prevent extreme logits
+        similarity = torch.clamp(similarity / self.temperature, min=-10.0, max=10.0)
         
-        # Clamp to prevent extreme logits
-        similarity = torch.clamp(similarity, min=-10.0, max=10.0)
-        
-        print(f"🔍 PrototypeContrastive Debug:")
-        print(f"  Query features: {query_features.shape}")
-        print(f"  Prototypes: {prototypes.shape}")
-        print(f"  Labels: {labels.tolist()}")
-        print(f"  Similarity range: [{similarity.min():.6f}, {similarity.max():.6f}]")
+        if self.debug_mode:
+            print(f"🔍 PrototypeContrastive Debug:")
+            print(f"  Query features: {query_features.shape}")
+            print(f"  Prototypes: {prototypes.shape}")
+            print(f"  Labels: {labels.tolist()}")
+            print(f"  Similarity range: [{similarity.min():.6f}, {similarity.max():.6f}]")
         
         # Cross-entropy loss (numerically stable)
         loss = F.cross_entropy(similarity, labels)
         
-        print(f"  Final loss: {loss.item():.6f}")
+        if self.debug_mode:
+            print(f"  Final loss: {loss.item():.6f}")
         
         return loss

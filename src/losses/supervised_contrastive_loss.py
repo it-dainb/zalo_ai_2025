@@ -173,14 +173,45 @@ class PrototypeContrastiveLoss(nn.Module):
         Returns:
             torch.Tensor: Prototype contrastive loss
         """
-        # Normalize
-        query_features = F.normalize(query_features, p=2, dim=1)
-        prototypes = F.normalize(prototypes, p=2, dim=1)
+        device = query_features.device
+        
+        # Check inputs for NaN/Inf
+        if torch.isnan(query_features).any() or torch.isinf(query_features).any():
+            print(f"⚠️ PrototypeContrastive INPUT: query_features has NaN/Inf!")
+            return torch.tensor(0.0, device=device, requires_grad=True)
+        if torch.isnan(prototypes).any() or torch.isinf(prototypes).any():
+            print(f"⚠️ PrototypeContrastive INPUT: prototypes has NaN/Inf!")
+            return torch.tensor(0.0, device=device, requires_grad=True)
+        
+        # CRITICAL FIX: Use manual normalization to avoid F.normalize gradient explosion
+        # Compute norms without gradient
+        with torch.no_grad():
+            query_norms = torch.norm(query_features, p=2, dim=1, keepdim=True)
+            query_norms = torch.clamp(query_norms, min=1e-4)
+            
+            proto_norms = torch.norm(prototypes, p=2, dim=1, keepdim=True)
+            proto_norms = torch.clamp(proto_norms, min=1e-4)
+        
+        # Normalize with detached norms (gradient flows through features, not normalization)
+        query_features_norm = query_features / query_norms.detach()
+        prototypes_norm = prototypes / proto_norms.detach()
+        
+        print(f"🔍 PrototypeContrastive Debug:")
+        print(f"  Query features: {query_features.shape}, norm range: [{query_norms.min():.6f}, {query_norms.max():.6f}]")
+        print(f"  Prototypes: {prototypes.shape}, norm range: [{proto_norms.min():.6f}, {proto_norms.max():.6f}]")
+        print(f"  Labels: {labels.tolist()}")
         
         # Compute similarity: [N, K]
-        similarity = torch.matmul(query_features, prototypes.T) / self.temperature
+        similarity = torch.matmul(query_features_norm, prototypes_norm.T) / self.temperature
         
-        # Cross-entropy loss
+        # Clamp similarity to prevent extreme values
+        similarity = torch.clamp(similarity, min=-50.0, max=50.0)
+        
+        print(f"  Similarity range: [{similarity.min():.6f}, {similarity.max():.6f}]")
+        
+        # Cross-entropy loss (numerically stable)
         loss = F.cross_entropy(similarity, labels)
+        
+        print(f"  Final loss: {loss.item():.6f}")
         
         return loss

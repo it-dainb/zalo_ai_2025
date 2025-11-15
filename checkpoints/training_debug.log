@@ -221,3 +221,7 @@ Loss Components:
 [2025-11-16 01:56:00] DEBUG -   supcon_loss: 0.000000
 [2025-11-16 01:56:00] DEBUG -   cpe_loss: nan
 [2025-11-16 01:56:00] DEBUG -   triplet_loss: 0.000000
+[2025-11-16 02:00:34] DEBUG - 
+Initial learning rate: 1.000000e-05
+[2025-11-16 02:00:34] DEBUG - Optimizer: AdamW
+[2025-11-16 02:00:34] DEBUG - Scheduler: CosineAnnealingLR

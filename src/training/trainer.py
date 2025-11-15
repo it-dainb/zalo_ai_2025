@@ -513,7 +513,7 @@ class RefDetTrainer:
                 
                 # Per-loss gradient check on first DETECTION batch to isolate NaN source
                 is_detection = batch_to_use.get('batch_type') == 'detection'
-                if is_detection and not self._detection_gradient_check_done and self.epoch == 1:
+                if is_detection and not self._detection_gradient_check_done and self.epoch == 1 and self.debug_mode:
                     print(f"\n🔍 Performing per-loss gradient check on first DETECTION batch (batch_idx={batch_idx})...")
                     
                     # Use stored tensor losses (not the .item() converted ones in losses_dict)

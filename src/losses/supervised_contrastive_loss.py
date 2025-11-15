@@ -85,7 +85,9 @@ class SupervisedContrastiveLoss(nn.Module):
         
         # Compute log_prob
         exp_logits = torch.exp(logits) * logits_mask
-        log_prob = logits - torch.log(exp_logits.sum(1, keepdim=True) + 1e-7)
+        # Clamp for numerical stability (avoid log(0))
+        exp_sum = torch.clamp(exp_logits.sum(1, keepdim=True), min=1e-6)
+        log_prob = logits - torch.log(exp_sum)
         
         # Compute mean of log-likelihood over positive pairs
         # Handle case where a sample has no positives

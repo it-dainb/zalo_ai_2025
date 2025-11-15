@@ -188,7 +188,7 @@ def assign_targets_to_anchors(
     assigned_strides = torch.cat(all_assigned_strides, dim=0)   # (M,)
     target_boxes = torch.cat(all_target_boxes, dim=0)           # (M, 4)
     target_cls_idx = torch.cat(all_target_cls, dim=0)           # (M,)
-    target_dfl = torch.cat(all_target_dfl, dim=0).long()        # (M, 4)
+    target_dfl = torch.cat(all_target_dfl, dim=0).float()       # (M, 4) - MUST be float for DFL loss!
     
     # Validate class indices are within bounds before one-hot encoding
     if target_cls_idx.numel() > 0:
@@ -441,8 +441,8 @@ def prepare_loss_inputs(
             normalized_bboxes[:, [0, 2]] /= img_size
             normalized_bboxes[:, [1, 3]] /= img_size
             
-            target_dfl = (normalized_bboxes * reg_max).long()
-            target_dfl = torch.clamp(target_dfl, 0, reg_max)
+            target_dfl = (normalized_bboxes * reg_max).float()  # MUST be float for DFL loss!
+            target_dfl = torch.clamp(target_dfl, 0, reg_max - 1e-6)
             
         else:
             # No matches - use dummy tensors
@@ -450,7 +450,7 @@ def prepare_loss_inputs(
             matched_pred_cls_logits = torch.zeros((0, num_classes), device=device)
             matched_pred_dfl_dist = torch.zeros((0, 4 * (reg_max + 1)), device=device)
             target_cls_onehot = torch.zeros((0, num_classes), device=device)
-            target_dfl = torch.zeros((0, 4), dtype=torch.long, device=device)
+            target_dfl = torch.zeros((0, 4), dtype=torch.float32, device=device)  # MUST be float for DFL!
             matched_target_bboxes = torch.zeros((0, 4), device=device)
             matched_target_classes = torch.zeros(0, dtype=torch.long, device=device)
             matched_target_classes = torch.zeros(0, dtype=torch.long, device=device)

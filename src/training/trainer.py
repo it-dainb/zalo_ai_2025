@@ -505,6 +505,51 @@ class RefDetTrainer:
                     # Scale loss for gradient accumulation
                     loss = loss / self.gradient_accumulation_steps
                 
+                # Per-loss gradient check on first batch to isolate NaN source
+                if batch_idx == 0 and self.epoch == 1:
+                    print(f"\n🔍 Performing per-loss gradient check on first batch...")
+                    self.optimizer.zero_grad()
+                    
+                    # Test each loss component individually
+                    loss_test_results = {}
+                    for loss_name, loss_value in losses_dict.items():
+                        if loss_name == 'total_loss' or not isinstance(loss_value, torch.Tensor):
+                            continue
+                        if loss_value.item() == 0.0:
+                            loss_test_results[loss_name] = "SKIPPED (zero)"
+                            continue
+                        
+                        # Clear gradients
+                        self.optimizer.zero_grad()
+                        
+                        try:
+                            # Test backward on this loss component only
+                            test_loss = loss_value / self.gradient_accumulation_steps
+                            if self.mixed_precision:
+                                self.scaler.scale(test_loss).backward(retain_graph=True)
+                            else:
+                                test_loss.backward(retain_graph=True)
+                            
+                            # Check for NaN in gradients
+                            has_nan = False
+                            for param in self.model.parameters():
+                                if param.grad is not None and (torch.isnan(param.grad).any() or torch.isinf(param.grad).any()):
+                                    has_nan = True
+                                    break
+                            
+                            loss_test_results[loss_name] = "❌ NaN GRADIENTS" if has_nan else "✅ OK"
+                        except Exception as e:
+                            loss_test_results[loss_name] = f"❌ ERROR: {str(e)}"
+                    
+                    # Print results
+                    print(f"\nPer-Loss Gradient Test Results:")
+                    for loss_name, result in loss_test_results.items():
+                        print(f"  {loss_name}: {result}")
+                    print()
+                    
+                    # Clear gradients before actual training
+                    self.optimizer.zero_grad()
+                
                 # Backward pass
                 if self.mixed_precision:
                     self.scaler.scale(loss).backward()

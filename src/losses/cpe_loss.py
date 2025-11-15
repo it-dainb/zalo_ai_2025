@@ -125,9 +125,10 @@ class CPELoss(nn.Module):
             exp_all = torch.exp(all_sim - max_sim)
             
             # Loss: -log(sum(exp(pos)) / sum(exp(all)))
-            loss_i = -torch.log(
-                torch.exp(pos_sim - max_sim).sum() / (exp_all.sum() + 1e-7)
-            )
+            # Clamp for numerical stability
+            exp_pos_sum = torch.clamp(torch.exp(pos_sim - max_sim).sum(), min=1e-6)
+            exp_all_sum = torch.clamp(exp_all.sum(), min=1e-6)
+            loss_i = -torch.log(exp_pos_sum / exp_all_sum)
             losses.append(loss_i)
         
         if len(losses) == 0:
@@ -198,10 +199,9 @@ class SimplifiedCPELoss(nn.Module):
             
             # Numerical stability
             max_sim = all_sim.max()
-            loss_i = -torch.log(
-                torch.exp(pos_sim - max_sim).sum() / 
-                (torch.exp(all_sim - max_sim).sum() + 1e-7)
-            )
+            exp_pos_sum = torch.clamp(torch.exp(pos_sim - max_sim).sum(), min=1e-6)
+            exp_all_sum = torch.clamp(torch.exp(all_sim - max_sim).sum(), min=1e-6)
+            loss_i = -torch.log(exp_pos_sum / exp_all_sum)
             losses.append(loss_i)
         
         if len(losses) == 0:

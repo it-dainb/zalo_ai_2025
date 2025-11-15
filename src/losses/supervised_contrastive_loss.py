@@ -65,16 +65,12 @@ class SupervisedContrastiveLoss(nn.Module):
             print(f"  features range: [{features.min():.6f}, {features.max():.6f}]")
             return torch.tensor(0.0, device=device, requires_grad=True)
         
-        # Normalize features
-        # Check for zero-norm features which cause NaN in normalization gradients
+        # Normalize features with numerical stability
+        # Use manual normalization with epsilon to avoid division by zero and gradient explosions
         feature_norms = torch.norm(features, p=2, dim=1, keepdim=True)
-        if (feature_norms == 0).any():
-            print(f"⚠️ SupCon: Found {(feature_norms == 0).sum().item()} zero-norm features!")
-            # Add small epsilon to avoid division by zero in gradient
-            feature_norms = torch.clamp(feature_norms, min=1e-8)
-            features = features / feature_norms
-        else:
-            features = F.normalize(features, p=2, dim=1)
+        # Clamp norms to avoid both zero and very small values that cause gradient explosions
+        feature_norms = torch.clamp(feature_norms, min=1e-4)
+        features = features / feature_norms
         
         # Compute similarity matrix: [N, N]
         similarity_matrix = torch.matmul(features, features.T) / self.temperature

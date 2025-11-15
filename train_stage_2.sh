@@ -5,20 +5,20 @@ python train.py \
     --test_annotations ./datasets/test/annotations/annotations.json \
     --stage 2 \
     --epochs 150 \
-    --n_way 4 \
-    --n_query 8 \
-    --num_aug 5 \
-    --auto_episodes \
+    --n_way 2 \
+    --n_query 4 \
+    --num_aug 3 \
+    --n_episodes 500 \
     --use_triplet \
     --triplet_ratio 0.3 \
     --negative_strategy mixed \
-    --triplet_batch_size 8 \
+    --triplet_batch_size 32 \
     --use_batch_hard_triplet \
     --lr 1e-4 \
     --weight_decay 0.05 \
     --gradient_accumulation 1 \
     --mixed_precision \
-    --num_workers 4 \
+    --num_workers 1 \
     --checkpoint_dir ./checkpoints/stage2 \
     --save_interval 5 \
     --bbox_weight 7.5 \
@@ -35,5 +35,4 @@ python train.py \
     --wandb_entity it-dainb \
     --wandb_name stage_2 \
     --val_st_iou_cache  ./datasets/test/annotations/ \
-    --gradient_clip_norm 10.0 \
-    --debug
+    --gradient_clip_norm 10.0

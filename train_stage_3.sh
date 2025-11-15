@@ -5,19 +5,20 @@ python train.py \
     --test_annotations ./datasets/test/annotations/annotations.json \
     --stage 3 \
     --epochs 50 \
-    --n_way 4 \
-    --n_query 8 \
-    --num_aug 5 \
-    --auto_episodes \
+    --n_way 2 \
+    --n_query 4 \
+    --num_aug 3 \
+    --n_episodes 500 \
     --use_triplet \
     --triplet_ratio 0.5 \
     --negative_strategy mixed \
-    --triplet_batch_size 64 \
+    --triplet_batch_size 32 \
+    --use_batch_hard_triplet \
     --lr 3e-5 \
     --weight_decay 0.05 \
     --gradient_accumulation 1 \
     --mixed_precision \
-    --num_workers 8 \
+    --num_workers 1 \
     --checkpoint_dir ./checkpoints/stage3 \
     --save_interval 5 \
     --bbox_weight 7.5 \
@@ -26,10 +27,13 @@ python train.py \
     --supcon_weight 0.4 \
     --cpe_weight 0.2 \
     --triplet_weight 0.6 \
+    --yolo_weights ./models/base/yolov8-n.pt \
+    --dinov3_model vit_small_patch16_dinov3.lvd1689m \
+    --freeze_dinov3 \
     --resume ./checkpoints/stage2/best_model.pt \
     --use_wandb \
     --wandb_project ZALO \
     --wandb_entity it-dainb \
     --wandb_name stage_3 \
     --val_st_iou_cache  ./datasets/test/annotations/ \
-    --debug
+    --gradient_clip_norm 10.0

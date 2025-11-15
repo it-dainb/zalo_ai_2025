@@ -87,18 +87,45 @@ class SupervisedContrastiveLoss(nn.Module):
         exp_logits = torch.exp(logits) * logits_mask
         # Clamp for numerical stability (avoid log(0))
         exp_sum = torch.clamp(exp_logits.sum(1, keepdim=True), min=1e-6)
+        
+        # Check for NaN/Inf before log
+        if torch.isnan(exp_sum).any() or torch.isinf(exp_sum).any():
+            print(f"⚠️ SupCon: exp_sum has NaN/Inf!")
+            print(f"  exp_logits range: [{exp_logits.min():.6f}, {exp_logits.max():.6f}]")
+            print(f"  logits range: [{logits.min():.6f}, {logits.max():.6f}]")
+            print(f"  similarity_matrix range: [{similarity_matrix.min():.6f}, {similarity_matrix.max():.6f}]")
+        
         log_prob = logits - torch.log(exp_sum)
         
         # Compute mean of log-likelihood over positive pairs
         # Handle case where a sample has no positives
         mask_sum = mask.sum(1)
+        
+        # If no positive pairs exist for a sample, skip it entirely
+        # (This can happen in few-shot scenarios with small batch sizes)
+        if (mask_sum == 0).all():
+            # No valid positive pairs in entire batch - return zero loss
+            return torch.tensor(0.0, device=device, requires_grad=True)
+        
+        # Replace zero mask_sum with 1 to avoid division by zero
         mask_sum = torch.where(mask_sum == 0, torch.ones_like(mask_sum), mask_sum)
         
         mean_log_prob_pos = (mask * log_prob).sum(1) / mask_sum
         
+        # Clamp to prevent extreme values that cause NaN gradients
+        # This handles cases where log_prob is very negative (-inf)
+        mean_log_prob_pos = torch.clamp(mean_log_prob_pos, min=-50.0, max=50.0)
+        
         # Loss
         loss = -(self.temperature / self.base_temperature) * mean_log_prob_pos
-        loss = loss.mean()
+        
+        # Only average over samples that have positive pairs
+        valid_samples = mask_sum > 1  # >1 because we set no-positive cases to 1
+        if valid_samples.any():
+            loss = loss[valid_samples].mean()
+        else:
+            # All samples have no positives - return zero loss
+            loss = torch.tensor(0.0, device=device, requires_grad=True)
         
         return loss
 

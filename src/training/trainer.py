@@ -302,6 +302,9 @@ class RefDetTrainer:
         self.grad_norm_history = []  # Track recent gradient norms for adaptive clipping
         self.grad_norm_window = 100  # Window size for gradient norm tracking
         
+        # Per-loss gradient check tracking
+        self._detection_gradient_check_done = False
+        
         print(f"\n{'='*60}")
         print(f"RefDetTrainer initialized")
         print(f"{'='*60}")
@@ -419,6 +422,9 @@ class RefDetTrainer:
         # Reset NaN counter at start of epoch
         self.nan_count = 0
         
+        # Reset per-loss gradient check flag for this epoch
+        self._detection_gradient_check_done = False
+        
         # Metrics accumulation
         total_loss = 0.0
         loss_components = {}
@@ -505,9 +511,11 @@ class RefDetTrainer:
                     # Scale loss for gradient accumulation
                     loss = loss / self.gradient_accumulation_steps
                 
-                # Per-loss gradient check on first batch to isolate NaN source
-                if batch_idx == 0 and self.epoch == 1:
-                    print(f"\n🔍 Performing per-loss gradient check on first batch...")
+                # Per-loss gradient check on first DETECTION batch to isolate NaN source
+                is_detection = batch_to_use.get('batch_type') == 'detection'
+                if is_detection and not self._detection_gradient_check_done and self.epoch == 1:
+                    print(f"\n🔍 Performing per-loss gradient check on first DETECTION batch (batch_idx={batch_idx})...")
+                    self._detection_gradient_check_done = True
                     self.optimizer.zero_grad()
                     
                     # Test each loss component individually

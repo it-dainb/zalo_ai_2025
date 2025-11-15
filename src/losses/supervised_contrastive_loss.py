@@ -183,30 +183,37 @@ class PrototypeContrastiveLoss(nn.Module):
             print(f"⚠️ PrototypeContrastive INPUT: prototypes has NaN/Inf!")
             return torch.tensor(0.0, device=device, requires_grad=True)
         
-        # CRITICAL FIX: Use manual normalization to avoid F.normalize gradient explosion
-        # Compute norms without gradient
-        with torch.no_grad():
-            query_norms = torch.norm(query_features, p=2, dim=1, keepdim=True)
-            query_norms = torch.clamp(query_norms, min=1e-4)
-            
-            proto_norms = torch.norm(prototypes, p=2, dim=1, keepdim=True)
-            proto_norms = torch.clamp(proto_norms, min=1e-4)
+        # CRITICAL FIX: Use cosine_similarity which is more numerically stable
+        # than manual normalization + matmul in mixed precision training
+        # PyTorch's cosine_similarity has built-in stability for gradients
         
-        # Normalize with detached norms (gradient flows through features, not normalization)
-        query_features_norm = query_features / query_norms.detach()
-        prototypes_norm = prototypes / proto_norms.detach()
+        # Compute cosine similarity for each query-prototype pair: [N, K]
+        # cosine_similarity expects [N, D] and [K, D], computes [N, K]
+        N = query_features.shape[0]
+        K = prototypes.shape[0]
+        
+        # Expand dimensions for broadcasting: [N, 1, D] and [1, K, D]
+        query_expanded = query_features.unsqueeze(1)  # [N, 1, D]
+        proto_expanded = prototypes.unsqueeze(0)      # [1, K, D]
+        
+        # Repeat to create [N, K, D] tensors
+        query_repeated = query_expanded.expand(N, K, -1)  # [N, K, D]
+        proto_repeated = proto_expanded.expand(N, K, -1)  # [N, K, D]
+        
+        # Compute cosine similarity along dimension 2 (feature dimension)
+        # Result: [N, K] where each element is cosine similarity between query i and prototype j
+        similarity = F.cosine_similarity(query_repeated, proto_repeated, dim=2, eps=1e-6)
+        
+        # Scale by temperature
+        similarity = similarity / self.temperature
+        
+        # Clamp to prevent extreme logits
+        similarity = torch.clamp(similarity, min=-10.0, max=10.0)
         
         print(f"🔍 PrototypeContrastive Debug:")
-        print(f"  Query features: {query_features.shape}, norm range: [{query_norms.min():.6f}, {query_norms.max():.6f}]")
-        print(f"  Prototypes: {prototypes.shape}, norm range: [{proto_norms.min():.6f}, {proto_norms.max():.6f}]")
+        print(f"  Query features: {query_features.shape}")
+        print(f"  Prototypes: {prototypes.shape}")
         print(f"  Labels: {labels.tolist()}")
-        
-        # Compute similarity: [N, K]
-        similarity = torch.matmul(query_features_norm, prototypes_norm.T) / self.temperature
-        
-        # Clamp similarity to prevent extreme values
-        similarity = torch.clamp(similarity, min=-50.0, max=50.0)
-        
         print(f"  Similarity range: [{similarity.min():.6f}, {similarity.max():.6f}]")
         
         # Cross-entropy loss (numerically stable)

@@ -225,3 +225,76 @@ Loss Components:
 Initial learning rate: 1.000000e-05
 [2025-11-16 02:00:34] DEBUG - Optimizer: AdamW
 [2025-11-16 02:00:34] DEBUG - Scheduler: CosineAnnealingLR
+[2025-11-16 02:03:48] DEBUG - 
+Initial learning rate: 1.000000e-05
+[2025-11-16 02:03:48] DEBUG - Optimizer: AdamW
+[2025-11-16 02:03:48] DEBUG - Scheduler: CosineAnnealingLR
+[2025-11-16 02:03:50] DEBUG - 
+======================================================================
+[2025-11-16 02:03:50] DEBUG - BATCH 0 - Type: detection
+[2025-11-16 02:03:50] DEBUG - ======================================================================
+[2025-11-16 02:03:50] DEBUG - 
+Batch Contents:
+[2025-11-16 02:03:50] DEBUG -   query_images:
+[2025-11-16 02:03:50] DEBUG -     Shape: torch.Size([8, 3, 640, 640])
+[2025-11-16 02:03:50] DEBUG -     Dtype: torch.float32
+[2025-11-16 02:03:50] DEBUG -     Device: cuda:0
+[2025-11-16 02:03:50] DEBUG -     Range: [-2.1179, 2.6400]
+[2025-11-16 02:03:50] DEBUG -     Mean: -0.8680
+[2025-11-16 02:03:50] DEBUG -     Std: 0.8486
+[2025-11-16 02:03:50] DEBUG -     Has NaN: False
+[2025-11-16 02:03:50] DEBUG -     Has Inf: False
+[2025-11-16 02:03:50] DEBUG -   support_images:
+[2025-11-16 02:03:50] DEBUG -     Shape: torch.Size([2, 3, 3, 512, 512])
+[2025-11-16 02:03:50] DEBUG -     Dtype: torch.float32
+[2025-11-16 02:03:50] DEBUG -     Device: cuda:0
+[2025-11-16 02:03:50] DEBUG -     Range: [-2.1179, 2.6400]
+[2025-11-16 02:03:50] DEBUG -     Mean: -0.2681
+[2025-11-16 02:03:50] DEBUG -     Std: 1.1695
+[2025-11-16 02:03:50] DEBUG -     Has NaN: False
+[2025-11-16 02:03:50] DEBUG -     Has Inf: False
+[2025-11-16 02:03:50] DEBUG -   target_bboxes: List of 8 tensors
+[2025-11-16 02:03:50] DEBUG -     First tensor shape: torch.Size([1, 4])
+[2025-11-16 02:03:50] DEBUG -   target_classes: List of 8 tensors
+[2025-11-16 02:03:50] DEBUG -     First tensor shape: torch.Size([1])
+[2025-11-16 02:03:50] DEBUG -   class_ids:
+[2025-11-16 02:03:50] DEBUG -     Shape: torch.Size([8])
+[2025-11-16 02:03:50] DEBUG -     Dtype: torch.int64
+[2025-11-16 02:03:50] DEBUG -     Device: cuda:0
+[2025-11-16 02:03:50] DEBUG -   video_ids: List of 8 str
+[2025-11-16 02:03:50] DEBUG -   num_classes: int
+[2025-11-16 02:03:50] DEBUG -   batch_type: str
+[2025-11-16 02:03:50] DEBUG - 
+Detection Forward Pass:
+[2025-11-16 02:03:50] DEBUG -   Support images: N=2, K=3, C=3, H=512, W=512
+[2025-11-16 02:03:50] DEBUG -   Query images: torch.Size([8, 3, 640, 640])
+[2025-11-16 02:03:52] DEBUG - 
+Model Outputs:
+[2025-11-16 02:03:52] DEBUG -   prototype_boxes: List of 4 tensors, first shape=torch.Size([8, 68, 160, 160])
+[2025-11-16 02:03:52] DEBUG -   prototype_sim: List of 4 tensors, first shape=torch.Size([8, 2, 160, 160])
+[2025-11-16 02:03:52] DEBUG -   query_features: torch.Size([8, 128]), range=[-0.2556, 1.7686]
+[2025-11-16 02:03:52] DEBUG -   support_prototypes: torch.Size([2, 128]), range=[-0.0232, 0.2959]
+[2025-11-16 02:03:52] DEBUG - 
+Loss Inputs:
+[2025-11-16 02:03:52] DEBUG -   pred_bboxes: torch.Size([422, 4])
+[2025-11-16 02:03:52] DEBUG -   pred_cls_logits: torch.Size([422, 2])
+[2025-11-16 02:03:52] DEBUG -   pred_dfl_dist: torch.Size([422, 68])
+[2025-11-16 02:03:52] DEBUG -   target_bboxes: torch.Size([422, 4])
+[2025-11-16 02:03:52] DEBUG -   target_cls: torch.Size([422, 2])
+[2025-11-16 02:03:52] DEBUG -   target_dfl: torch.Size([422, 4])
+[2025-11-16 02:03:52] DEBUG -   proposal_features: torch.Size([422, 512])
+[2025-11-16 02:03:52] DEBUG -   proposal_labels: torch.Size([422])
+[2025-11-16 02:03:52] DEBUG -   query_features: torch.Size([8, 128])
+[2025-11-16 02:03:52] DEBUG -   support_prototypes: torch.Size([2, 128])
+[2025-11-16 02:03:52] DEBUG -   feature_labels: torch.Size([8])
+[2025-11-16 02:03:52] DEBUG -   triplet_embeddings: torch.Size([8, 128])
+[2025-11-16 02:03:52] DEBUG -   triplet_labels: torch.Size([8])
+[2025-11-16 02:03:52] DEBUG - 
+Loss Components:
+[2025-11-16 02:03:52] DEBUG -   Total Loss: nan
+[2025-11-16 02:03:52] DEBUG -   bbox_loss: nan
+[2025-11-16 02:03:52] DEBUG -   cls_loss: 0.929791
+[2025-11-16 02:03:52] DEBUG -   dfl_loss: nan
+[2025-11-16 02:03:52] DEBUG -   supcon_loss: 0.767166
+[2025-11-16 02:03:52] DEBUG -   cpe_loss: nan
+[2025-11-16 02:03:52] DEBUG -   triplet_loss: 0.000000

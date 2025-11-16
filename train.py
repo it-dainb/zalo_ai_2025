@@ -304,20 +304,12 @@ def create_dataloaders(args, aug_config):
             frame_cache_size=args.frame_cache_size if not args.disable_cache else 0,
             support_cache_size_mb=args.support_cache_size_mb if not args.disable_cache else 1,
         )
-
-        n_episodes = auto_calculate_episodes(
-            dataset=val_dataset,
-            n_way=min(args.n_way, len(val_dataset.classes)),
-            n_query=args.n_query,
-            stage=args.stage,
-            coverage_factor=1.0,  # Always use full coverage for validation
-        )
         
         val_sampler = EpisodicBatchSampler(
             dataset=val_dataset,
             n_way=min(args.n_way, len(val_dataset.classes)),
             n_query=args.n_query,
-            n_episodes=n_episodes,
+            n_episodes=10,
         )
         
         val_collator = RefDetCollator(
@@ -613,12 +605,12 @@ def main():
     # Create scheduler
     scheduler = create_scheduler(args, optimizer, train_loader)
     
-    # Calculate wandb logging interval (log every 1% of steps per epoch)
+    # Calculate wandb logging interval (log every 0.1% of steps per epoch)
     wandb_log_interval = None
     if args.use_wandb:
-        # Log every 1% of steps, minimum 1 step
-        wandb_log_interval = max(1, len(train_loader) // 100)
-        print(f"\nWandb logging: Every {wandb_log_interval} steps (~1% of {len(train_loader)} total steps per epoch)")
+        # Log every 0.1% of steps, minimum 1 step
+        wandb_log_interval = max(1, len(train_loader) // 1000)
+        print(f"\nWandb logging: Every {wandb_log_interval} steps (~0.1% of {len(train_loader)} total steps per epoch)")
     
     # Create trainer
     trainer = RefDetTrainer(

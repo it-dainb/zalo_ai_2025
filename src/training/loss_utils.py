@@ -304,6 +304,9 @@ def prepare_loss_inputs(
     target_bboxes = batch['target_bboxes']  # type: List[torch.Tensor]
     target_classes = batch['target_classes']  # type: List[torch.Tensor]
     
+    # Initialize diagnostic data
+    diagnostic_data = None
+    
     # Validate target_classes are within bounds BEFORE anchor assignment
     for img_idx, tc in enumerate(target_classes):
         if tc.numel() > 0:
@@ -333,6 +336,14 @@ def prepare_loss_inputs(
             target_classes=target_classes,
             img_size=640,
         )
+        
+        # Store diagnostic data for training diagnostics
+        diagnostic_data = {
+            'anchor_points': matched_anchor_points,
+            'strides': matched_assigned_strides,
+            'proto_boxes_list': proto_boxes,
+            'proto_sim_list': proto_sim,
+        }
         
         # No need to decode - bbox predictions are now direct (x1, y1, x2, y2) format
         # matched_pred_bboxes: (M, 4) are already in the right format
@@ -387,6 +398,8 @@ def prepare_loss_inputs(
         # Use query features from matched anchors as proposal features
         'proposal_features': None,  # Will be populated below
         'proposal_labels': None,    # Will be populated below
+        # Diagnostic data (only available with anchor-based assignment)
+        'diagnostic_data': diagnostic_data,
     }
     
     # Add contrastive learning inputs for Stage 2+

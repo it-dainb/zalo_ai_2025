@@ -23,6 +23,7 @@ from src.training.loss_utils import (
     prepare_mixed_loss_inputs,
 )
 from src.augmentations.augmentation_config import AugmentationConfig
+from src.training.diagnostics import TrainingDiagnostics
 
 try:
     import wandb
@@ -295,6 +296,14 @@ class RefDetTrainer:
         # Per-loss gradient check tracking
         self._detection_gradient_check_done = False
         
+        # Initialize diagnostics
+        self.diagnostics = TrainingDiagnostics(
+            logger=self.logger,
+            enable=debug_mode,  # Enable diagnostics when debug mode is on
+            log_frequency=10,
+            detailed_frequency=50
+        )
+        
         print(f"\n{'='*60}")
         print(f"RefDetTrainer initialized")
         print(f"{'='*60}")
@@ -478,6 +487,30 @@ class RefDetTrainer:
                         self.logger.debug(f"  Total Loss: {loss.item():.6f}")
                         for key, val in losses_dict.items():
                             self.logger.debug(f"  {key}: {val:.6f}")
+                    
+                    # Log diagnostics if enabled
+                    if self.diagnostics.enable and hasattr(self, '_current_diagnostic_data'):
+                        diag_data = self._current_diagnostic_data
+                        loss_inputs = diag_data['loss_inputs']
+                        diagnostic_data = loss_inputs.get('diagnostic_data')
+                        
+                        if diagnostic_data is not None:
+                            self.diagnostics.log_batch_diagnostics(
+                                step=self.global_step,
+                                pred_bboxes=loss_inputs['pred_bboxes'],
+                                target_bboxes=loss_inputs['target_bboxes'],
+                                pred_cls_logits=loss_inputs['pred_cls_logits'],
+                                target_cls=loss_inputs['target_cls'],
+                                anchor_points=diagnostic_data['anchor_points'],
+                                strides=diagnostic_data['strides'],
+                                losses_dict=diag_data['losses_dict'],
+                                proto_boxes_list=diagnostic_data['proto_boxes_list'],
+                                proto_sim_list=diagnostic_data['proto_sim_list'],
+                                gt_bboxes_list=diag_data['batch']['target_bboxes'],
+                                gt_classes_list=diag_data['batch']['target_classes'],
+                            )
+                        # Clear diagnostic data after logging
+                        delattr(self, '_current_diagnostic_data')
                     
                     # Check for NaN/Inf in loss
                     if torch.isnan(loss) or torch.isinf(loss):
@@ -1130,6 +1163,14 @@ class RefDetTrainer:
         # Store original tensor losses for gradient checking (only in epoch 1)
         if self.epoch == 1 and not hasattr(self, '_loss_tensors_for_check'):
             self._loss_tensors_for_check = {k: v for k, v in losses.items() if k != 'total_loss'}
+        
+        # Store diagnostic data for later use
+        if self.diagnostics.enable and loss_inputs.get('diagnostic_data') is not None:
+            self._current_diagnostic_data = {
+                'loss_inputs': loss_inputs,
+                'losses_dict': losses_dict,
+                'batch': batch,
+            }
         
         return total_loss, losses_dict
     

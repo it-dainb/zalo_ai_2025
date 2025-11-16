@@ -132,7 +132,7 @@ def parse_args():
                         help='Gradient clipping max norm (0 = no clipping, recommended: 10.0 for multi-scale architecture)')
     
     # Loss arguments
-    parser.add_argument('--bbox_weight', type=float, default=7.5,
+    parser.add_argument('--bbox_weight', type=float, default=2.0,
                         help='Weight for bbox regression loss')
     parser.add_argument('--cls_weight', type=float, default=0.5,
                         help='Weight for classification loss')

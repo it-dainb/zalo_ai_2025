@@ -71,7 +71,7 @@ class DFLoss(nn.Module):
         weight_right = target - target_left.float()
         
         # Calculate loss for each coordinate
-        loss = 0
+        loss = torch.zeros(batch_size, device=pred_dist.device, dtype=pred_dist.dtype)
         for i in range(4):
             # Get distribution for coordinate i
             dist = pred_dist[:, i, :]  # [N, reg_max]
@@ -101,10 +101,12 @@ class DFLoss(nn.Module):
             
             loss += loss_left + loss_right
         
-        # Return mean loss (individual losses already clamped at 20.0)
-        # DO NOT clamp the final mean - it prevents learning from random init
-        # Random init gives ~2.77 per coord × 4 coords = 11.08, which would be clamped at 10.0
+        # Return mean loss with aggressive clamping to prevent gradient explosion
+        # Individual losses already clamped at 20.0, but we need to clamp mean too
+        # to prevent mixed precision scaling from amplifying gradients
         loss_mean = loss.mean()
+        # Clamp at 15.0 to allow learning from random init (~11.08) but prevent explosion
+        loss_mean = torch.clamp(loss_mean, max=15.0)
         return loss_mean
     
     def decode(self, pred_dist):

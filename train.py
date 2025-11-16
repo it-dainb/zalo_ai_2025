@@ -128,16 +128,16 @@ def parse_args():
                         help='Weight decay')
     parser.add_argument('--gradient_accumulation', type=int, default=4,
                         help='Gradient accumulation steps (increased to 4 to compensate for reduced num_workers)')
-    parser.add_argument('--gradient_clip_norm', type=float, default=1.0,
-                        help='Gradient clipping max norm (0 = no clipping, recommended: 0.5-2.0)')
+    parser.add_argument('--gradient_clip_norm', type=float, default=10.0,
+                        help='Gradient clipping max norm (0 = no clipping, recommended: 10.0 for multi-scale architecture)')
     
     # Loss arguments
     parser.add_argument('--bbox_weight', type=float, default=7.5,
                         help='Weight for bbox regression loss')
     parser.add_argument('--cls_weight', type=float, default=0.5,
                         help='Weight for classification loss')
-    parser.add_argument('--dfl_weight', type=float, default=1.5,
-                        help='Weight for DFL loss')
+    parser.add_argument('--dfl_weight', type=float, default=0.5,
+                        help='Weight for DFL loss (reduced from 1.5 to balance loss magnitudes)')
     parser.add_argument('--supcon_weight', type=float, default=1.0,
                         help='Weight for supervised contrastive loss')
     parser.add_argument('--cpe_weight', type=float, default=0.5,

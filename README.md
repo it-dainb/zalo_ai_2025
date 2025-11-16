@@ -518,17 +518,23 @@ zalo_ai_2025/
    - Hyperparameter tuning
    - Troubleshooting guide
 
-2. **[ARCHITECTURE.md](./docs/TRAINING_PIPELINE_GUIDE.md)**
+2. **[GRADIENT_EXPLOSION_SOLUTION.md](./GRADIENT_EXPLOSION_SOLUTION.md)** 🔧
+   - Gradient explosion fix (4.97M → 5-15)
+   - Multi-scale architecture analysis
+   - DFL loss balancing
+   - Quick reference: [GRADIENT_FIX_QUICKSTART.md](./GRADIENT_FIX_QUICKSTART.md)
+
+3. **[ARCHITECTURE.md](./docs/TRAINING_PIPELINE_GUIDE.md)**
    - Detailed model architecture
    - Component interactions
    - Design decisions
 
-3. **[AUGMENTATION_GUIDE.md](./docs/augmentation-guide.md)**
+4. **[AUGMENTATION_GUIDE.md](./docs/augmentation-guide.md)**
    - Data augmentation strategies
    - Query vs support augmentation
    - Temporal consistency
 
-4. **[LOSS_FUNCTIONS.md](./docs/loss-functions-guide.md)**
+5. **[LOSS_FUNCTIONS.md](./docs/loss-functions-guide.md)**
    - Loss function analysis
    - WIoU vs CIoU comparison
    - Contrastive learning losses

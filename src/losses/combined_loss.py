@@ -181,7 +181,11 @@ class ReferenceBasedDetectionLoss(nn.Module):
         
         # 2. Classification loss (BCE)
         if pred_cls_logits.numel() > 0 and target_cls.numel() > 0:
-            losses['cls_loss'] = self.cls_loss(pred_cls_logits, target_cls)
+            # CRITICAL: Clamp logits BEFORE BCE loss to prevent gradient explosion
+            # Even though BCE loss clamps internally, we need to clamp logits to prevent
+            # gradient explosion during backward pass through feature_proj layers
+            pred_cls_logits_clamped = torch.clamp(pred_cls_logits, min=-10.0, max=10.0)
+            losses['cls_loss'] = self.cls_loss(pred_cls_logits_clamped, target_cls)
         else:
             losses['cls_loss'] = torch.tensor(0.0, device=pred_cls_logits.device, requires_grad=True)
         

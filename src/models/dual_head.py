@@ -188,6 +188,9 @@ class PrototypeDetectionHead(nn.Module):
         # Initialize weights for box regression head (critical for stability)
         self._initialize_weights()
         
+        # Add gradient clipping hooks to feature_proj layers to prevent NaN gradients
+        self._register_gradient_hooks()
+        
         # Determine scales dynamically based on number of detection layers
         # If nl < 4, use last nl scales (e.g., 3 layers -> ['p3', 'p4', 'p5'])
         all_scales = ['p2', 'p3', 'p4', 'p5']
@@ -212,6 +215,26 @@ class PrototypeDetectionHead(nn.Module):
                     elif isinstance(m, nn.BatchNorm2d):
                         nn.init.constant_(m.weight, 1)
                         nn.init.constant_(m.bias, 0)
+    
+    def _register_gradient_hooks(self):
+        """
+        Register gradient clipping hooks on feature_proj layers.
+        This prevents gradient explosion in cls_loss backward pass.
+        """
+        def gradient_clip_hook(grad):
+            """Clamp gradients to [-10, 10] range."""
+            if grad is not None:
+                return torch.clamp(grad, min=-10.0, max=10.0)
+            return grad
+        
+        # Register hooks on all Conv2d and BatchNorm2d layers in feature_proj
+        for i, module in enumerate(self.feature_proj):
+            for m in module.modules():
+                if isinstance(m, (nn.Conv2d, nn.BatchNorm2d)):
+                    if hasattr(m, 'weight') and m.weight is not None:
+                        m.weight.register_hook(gradient_clip_hook)
+                    if hasattr(m, 'bias') and m.bias is not None:
+                        m.bias.register_hook(gradient_clip_hook)
     
     def compute_similarity(
         self, 
@@ -275,6 +298,10 @@ class PrototypeDetectionHead(nn.Module):
         for i in range(self.nl):
             # Project features to prototype dimension
             feat_proj = self.feature_proj[i](x[i])  # (B, proto_dim, H, W)
+            
+            # CRITICAL: Clamp feature projections to prevent gradient explosion
+            # These go into similarity computation which affects cls_loss gradients
+            feat_proj = torch.clamp(feat_proj, min=-10.0, max=10.0)
             
             # Compute similarity with prototypes
             scale_key = self.scales[i]

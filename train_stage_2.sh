@@ -14,8 +14,8 @@ python train.py \
     --negative_strategy mixed \
     --triplet_batch_size 32 \
     --use_batch_hard_triplet \
-    --lr 1e-4 \
-    --weight_decay 0.05 \
+    --lr 3e-5 \
+    --weight_decay 0.005 \
     --gradient_accumulation 1 \
     --mixed_precision \
     --num_workers 1 \
@@ -23,7 +23,7 @@ python train.py \
     --save_interval 5 \
     --bbox_weight 7.5 \
     --cls_weight 0.5 \
-    --dfl_weight 1.0 \
+    --dfl_weight 0.5 \
     --supcon_weight 1.2 \
     --cpe_weight 0.6 \
     --triplet_weight 0.3 \
@@ -33,6 +33,6 @@ python train.py \
     --use_wandb \
     --wandb_project ZALO \
     --wandb_entity it-dainb \
-    --wandb_name stage_2 \
+    --wandb_name stage_2_gradient_fix \
     --val_st_iou_cache  ./datasets/test/annotations/ \
-    --gradient_clip_norm 5.0
+    --gradient_clip_norm 0.5

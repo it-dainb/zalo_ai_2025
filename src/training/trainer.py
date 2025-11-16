@@ -570,6 +570,8 @@ class RefDetTrainer:
                 # Backward pass
                 if self.mixed_precision:
                     self.scaler.scale(loss).backward()
+                    # IMPORTANT: Unscale gradients BEFORE checking for NaN/Inf
+                    self.scaler.unscale_(self.optimizer)
                 else:
                     loss.backward()
                 
@@ -625,8 +627,7 @@ class RefDetTrainer:
                         total_norm_before = total_norm_before ** 0.5
                     
                     if self.mixed_precision:
-                        # Unscale gradients for gradient clipping
-                        self.scaler.unscale_(self.optimizer)
+                        # NOTE: Gradients already unscaled after backward() for NaN checking
                         
                         # Gradient clipping (if enabled)
                         clipped_norm = 0.0

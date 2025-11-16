@@ -83,13 +83,23 @@ class DFLoss(nn.Module):
             prob_left = dist[torch.arange(batch_size), target_l]
             prob_right = dist[torch.arange(batch_size), target_r]
             
+            # Clamp probabilities to prevent log explosion (was 1e-7, now 1e-6)
+            prob_left = torch.clamp(prob_left, min=1e-6, max=1.0)
+            prob_right = torch.clamp(prob_right, min=1e-6, max=1.0)
+            
             # DFL loss: negative log-likelihood weighted by distance to bins
-            loss_left = -torch.log(prob_left + 1e-7) * weight_left[:, i]
-            loss_right = -torch.log(prob_right + 1e-7) * weight_right[:, i]
+            loss_left = -torch.log(prob_left) * weight_left[:, i]
+            loss_right = -torch.log(prob_right) * weight_right[:, i]
+            
+            # Clamp individual losses to prevent outliers
+            loss_left = torch.clamp(loss_left, max=20.0)
+            loss_right = torch.clamp(loss_right, max=20.0)
             
             loss += loss_left + loss_right
         
-        return loss.mean()
+        # Clamp final loss value
+        loss_mean = loss.mean()
+        return torch.clamp(loss_mean, max=15.0)
     
     def decode(self, pred_dist):
         """

@@ -95,10 +95,27 @@ class StandardDetectionHead(nn.Module):
         
         self.dfl = DFL(self.reg_max) if self.reg_max > 1 else nn.Identity()
         
+        # Initialize weights for stability
+        self._initialize_weights()
+        
         print(f"Standard Detection Head initialized:")
         print(f"  - Number of classes: {nc}")
         print(f"  - Detection layers: {self.nl}")
         print(f"  - Input channels: {ch}")
+    
+    def _initialize_weights(self):
+        """Initialize weights for detection head to prevent gradient explosion."""
+        for module_list in [self.cv2, self.cv3]:
+            for module in module_list:
+                for m in module.modules():
+                    if isinstance(m, nn.Conv2d):
+                        # Use smaller std for final conv layers
+                        nn.init.normal_(m.weight, mean=0.0, std=0.01)
+                        if m.bias is not None:
+                            nn.init.constant_(m.bias, 0)
+                    elif isinstance(m, nn.BatchNorm2d):
+                        nn.init.constant_(m.weight, 1)
+                        nn.init.constant_(m.bias, 0)
     
     def forward(self, x: List[torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:
         """
@@ -168,6 +185,9 @@ class PrototypeDetectionHead(nn.Module):
         
         self.dfl = DFL(self.reg_max) if self.reg_max > 1 else nn.Identity()
         
+        # Initialize weights for box regression head (critical for stability)
+        self._initialize_weights()
+        
         # Determine scales dynamically based on number of detection layers
         # If nl < 4, use last nl scales (e.g., 3 layers -> ['p3', 'p4', 'p5'])
         all_scales = ['p2', 'p3', 'p4', 'p5']
@@ -178,6 +198,20 @@ class PrototypeDetectionHead(nn.Module):
         print(f"  - Scales: {self.scales}")
         print(f"  - Prototype dims: {proto_dims}")
         print(f"  - Temperature: {temperature}")
+    
+    def _initialize_weights(self):
+        """Initialize weights for box regression head to prevent gradient explosion."""
+        for module_list in [self.cv2, self.feature_proj]:
+            for module in module_list:
+                for m in module.modules():
+                    if isinstance(m, nn.Conv2d):
+                        # Use smaller std for final conv layers
+                        nn.init.normal_(m.weight, mean=0.0, std=0.01)
+                        if m.bias is not None:
+                            nn.init.constant_(m.bias, 0)
+                    elif isinstance(m, nn.BatchNorm2d):
+                        nn.init.constant_(m.weight, 1)
+                        nn.init.constant_(m.bias, 0)
     
     def compute_similarity(
         self, 

@@ -424,22 +424,29 @@ class TrainingDiagnostics:
         """Log loss component breakdown."""
         self.logger.info(f"\n💰 LOSS BREAKDOWN")
         
-        total_loss = losses_dict.get('total_loss', torch.tensor(0.0))
-        self.logger.info(f"   Total Loss: {total_loss.item():.4f}")
+        # Handle both tensor and float values
+        total_loss = losses_dict.get('total_loss', 0.0)
+        if isinstance(total_loss, torch.Tensor):
+            total_loss = total_loss.item()
+        self.logger.info(f"   Total Loss: {total_loss:.4f}")
         
         # Individual components
         components = ['bbox_loss', 'cls_loss', 'supcon_loss', 'cpe_loss', 'triplet_loss']
         
         for comp in components:
             if comp in losses_dict:
-                loss_val = losses_dict[comp].item()
+                loss_val = losses_dict[comp]
+                if isinstance(loss_val, torch.Tensor):
+                    loss_val = loss_val.item()
                 # Calculate percentage of total
-                pct = (loss_val / total_loss.item() * 100) if total_loss.item() > 0 else 0.0
+                pct = (loss_val / total_loss * 100) if total_loss > 0 else 0.0
                 self.logger.info(f"     {comp:15s}: {loss_val:8.4f} ({pct:5.1f}%)")
         
         # Check for anomalies
         if 'bbox_loss' in losses_dict:
-            bbox_loss = losses_dict['bbox_loss'].item()
+            bbox_loss = losses_dict['bbox_loss']
+            if isinstance(bbox_loss, torch.Tensor):
+                bbox_loss = bbox_loss.item()
             
             if torch.isnan(torch.tensor(bbox_loss)) or torch.isinf(torch.tensor(bbox_loss)):
                 self.logger.error(f"   ❌ BBOX LOSS IS NaN/Inf!")

@@ -6,7 +6,6 @@ from loss-functions-guide.md
 Loss Stack:
 - WIoU v3: 7.5 (bbox regression)
 - BCE: 0.5 (classification)
-- DFL: 1.5 (distribution focal loss)
 - SupCon: 1.0 → 0.5 (prototype matching)
 - CPE: 0.5 → 0.3 (contrastive proposal encoding)
 """
@@ -16,7 +15,6 @@ import torch.nn as nn
 
 from .wiou_loss import WIoULoss
 from .bce_loss import BCEClassificationLoss
-from .dfl_loss import DFLoss
 from .supervised_contrastive_loss import SupervisedContrastiveLoss, PrototypeContrastiveLoss
 from .cpe_loss import SimplifiedCPELoss
 from .triplet_loss import TripletLoss, BatchHardTripletLoss
@@ -35,11 +33,9 @@ class ReferenceBasedDetectionLoss(nn.Module):
         stage (int): Training stage (1, 2, or 3)
         bbox_weight (float): Weight for bbox regression loss
         cls_weight (float): Weight for classification loss
-        dfl_weight (float): Weight for DFL loss
         supcon_weight (float): Weight for supervised contrastive loss
         cpe_weight (float): Weight for CPE loss
         triplet_weight (float): Weight for triplet loss (Stage 3 only)
-        reg_max (int): Maximum regression value for DFL
         use_batch_hard_triplet (bool): Use BatchHardTripletLoss instead of regular TripletLoss
         debug_mode (bool): Enable debug prints in SupCon losses
     """
@@ -49,11 +45,9 @@ class ReferenceBasedDetectionLoss(nn.Module):
         stage=1,
         bbox_weight=7.5,
         cls_weight=0.5,
-        dfl_weight=0.5,  # REDUCED from 1.5 to 0.5 to prevent DFL loss domination
         supcon_weight=1.0,
         cpe_weight=0.5,
         triplet_weight=0.2,
-        reg_max=16,
         use_batch_hard_triplet=False,
         debug_mode=False
     ):
@@ -65,7 +59,6 @@ class ReferenceBasedDetectionLoss(nn.Module):
         # Core detection losses (always active)
         self.bbox_loss = WIoULoss(monotonous=True)
         self.cls_loss = BCEClassificationLoss()
-        self.dfl_loss = DFLoss(reg_max=reg_max)
         
         # Contrastive losses (stage 2+)
         self.supcon_loss = SupervisedContrastiveLoss(temperature=0.07, debug_mode=debug_mode)
@@ -81,42 +74,38 @@ class ReferenceBasedDetectionLoss(nn.Module):
         
         # Set weights based on stage
         self.weights = self._get_stage_weights(
-            stage, bbox_weight, cls_weight, dfl_weight, 
+            stage, bbox_weight, cls_weight, 
             supcon_weight, cpe_weight, triplet_weight
         )
     
-    def _get_stage_weights(self, stage, bbox_w, cls_w, dfl_w, supcon_w, cpe_w, triplet_w):
+    def _get_stage_weights(self, stage, bbox_w, cls_w, supcon_w, cpe_w, triplet_w):
         """Get loss weights for each training stage"""
         if stage == 1:
             # Stage 1: Base pre-training (no contrastive, no triplet)
             return {
                 'bbox': bbox_w,
                 'cls': cls_w,
-                'dfl': dfl_w,
                 'supcon': 0.0,
                 'cpe': 0.0,
                 'triplet': 0.0
             }
         elif stage == 2:
             # Stage 2: Few-shot meta-learning (full contrastive, optional triplet)
-            # Triplet loss can be enabled to prevent catastrophic forgetting
             return {
                 'bbox': bbox_w,
                 'cls': cls_w,
-                'dfl': dfl_w,
                 'supcon': supcon_w,
                 'cpe': cpe_w,
-                'triplet': triplet_w  # Use provided triplet weight (0.0 if not using triplet)
+                'triplet': triplet_w
             }
         else:  # stage == 3
             # Stage 3: Fine-tuning (reduced contrastive, add triplet)
             return {
                 'bbox': bbox_w,
                 'cls': cls_w,
-                'dfl': dfl_w,
                 'supcon': supcon_w * 0.5,
                 'cpe': cpe_w * 0.6,
-                'triplet': triplet_w  # Prevent catastrophic forgetting
+                'triplet': triplet_w
             }
     
     def forward(
@@ -124,11 +113,9 @@ class ReferenceBasedDetectionLoss(nn.Module):
         # Detection outputs
         pred_bboxes,
         pred_cls_logits,
-        pred_dfl_dist,
         # Targets
         target_bboxes,
         target_cls,
-        target_dfl,
         # Contrastive learning (optional)
         query_features=None,
         support_prototypes=None,
@@ -149,10 +136,8 @@ class ReferenceBasedDetectionLoss(nn.Module):
             # Core detection
             pred_bboxes (torch.Tensor): Predicted boxes [N, 4] (x1,y1,x2,y2)
             pred_cls_logits (torch.Tensor): Class logits [N, num_classes]
-            pred_dfl_dist (torch.Tensor): DFL distribution [N, 4*reg_max] (FIXED: was 4*(reg_max+1))
             target_bboxes (torch.Tensor): Target boxes [N, 4]
             target_cls (torch.Tensor): Target classes [N, num_classes]
-            target_dfl (torch.Tensor): Target DFL coords [N, 4]
             
             # Contrastive learning (stage 2+)
             query_features (torch.Tensor, optional): Query features [M, D]
@@ -188,44 +173,6 @@ class ReferenceBasedDetectionLoss(nn.Module):
             losses['cls_loss'] = self.cls_loss(pred_cls_logits_clamped, target_cls)
         else:
             losses['cls_loss'] = torch.tensor(0.0, device=pred_cls_logits.device, requires_grad=True)
-        
-        # 3. Distribution Focal Loss
-        if pred_dfl_dist.numel() > 0 and target_dfl.numel() > 0:
-            # CRITICAL: Additional safeguards for DFL loss to prevent NaN gradients with AMP
-            # Clamp pred_dfl_dist BEFORE passing to loss function
-            pred_dfl_dist_safe = torch.clamp(pred_dfl_dist, min=-15.0, max=15.0)
-            
-            # Validate target_dfl is in valid range [0, reg_max-1]
-            if self.debug_mode:
-                target_min = target_dfl.min().item()
-                target_max = target_dfl.max().item()
-                if target_min < 0 or target_max >= self.dfl_loss.reg_max:
-                    print(f"⚠️  WARNING: target_dfl out of range: [{target_min:.4f}, {target_max:.4f}], reg_max={self.dfl_loss.reg_max}")
-            
-            # Clamp target_dfl to safe range
-            target_dfl_safe = torch.clamp(target_dfl, min=0.0, max=self.dfl_loss.reg_max - 0.01)
-            
-            # Check for NaN/Inf before computing loss
-            if torch.isnan(pred_dfl_dist_safe).any() or torch.isnan(target_dfl_safe).any():
-                print(f"❌ ERROR: NaN detected in DFL inputs!")
-                print(f"  pred_dfl_dist has NaN: {torch.isnan(pred_dfl_dist_safe).any()}")
-                print(f"  target_dfl has NaN: {torch.isnan(target_dfl_safe).any()}")
-                losses['dfl_loss'] = torch.tensor(0.0, device=pred_dfl_dist.device, requires_grad=True)
-            elif torch.isinf(pred_dfl_dist_safe).any() or torch.isinf(target_dfl_safe).any():
-                print(f"❌ ERROR: Inf detected in DFL inputs!")
-                losses['dfl_loss'] = torch.tensor(0.0, device=pred_dfl_dist.device, requires_grad=True)
-            else:
-                # Compute DFL loss with safeguarded inputs
-                dfl_loss_value = self.dfl_loss(pred_dfl_dist_safe, target_dfl_safe)
-                
-                # Check if loss is NaN/Inf before using it
-                if torch.isnan(dfl_loss_value).any() or torch.isinf(dfl_loss_value).any():
-                    print(f"❌ ERROR: DFL loss is NaN/Inf: {dfl_loss_value.item()}")
-                    losses['dfl_loss'] = torch.tensor(0.0, device=pred_dfl_dist.device, requires_grad=True)
-                else:
-                    losses['dfl_loss'] = dfl_loss_value
-        else:
-            losses['dfl_loss'] = torch.tensor(0.0, device=pred_dfl_dist.device, requires_grad=True)
         
         # 4. Supervised Contrastive Loss (stage 2+)
         if self.weights['supcon'] > 0:
@@ -292,7 +239,6 @@ class ReferenceBasedDetectionLoss(nn.Module):
         total_loss = (
             self.weights['bbox'] * losses['bbox_loss'] +
             self.weights['cls'] * losses['cls_loss'] +
-            self.weights['dfl'] * losses['dfl_loss'] +
             self.weights['supcon'] * losses['supcon_loss'] +
             self.weights['cpe'] * losses['cpe_loss'] +
             self.weights['triplet'] * losses['triplet_loss']
@@ -302,12 +248,12 @@ class ReferenceBasedDetectionLoss(nn.Module):
         
         return losses
     
-    def set_stage(self, stage, bbox_weight=7.5, cls_weight=0.5, dfl_weight=0.5,  # REDUCED from 1.5
+    def set_stage(self, stage, bbox_weight=7.5, cls_weight=0.5,
                   supcon_weight=1.0, cpe_weight=0.5, triplet_weight=0.2):
         """Update training stage and corresponding weights"""
         self.stage = stage
         self.weights = self._get_stage_weights(
-            stage, bbox_weight, cls_weight, dfl_weight, 
+            stage, bbox_weight, cls_weight, 
             supcon_weight, cpe_weight, triplet_weight
         )
 

@@ -58,10 +58,10 @@ def postprocess_model_outputs(
     """
     # Select which head outputs to use based on mode
     if mode == 'prototype' and 'prototype_boxes' in model_outputs:
-        boxes_list = model_outputs['prototype_boxes']  # List of (B, 4*reg_max, H, W) per scale
+        boxes_list = model_outputs['prototype_boxes']  # List of (B, 4, H, W) per scale
         scores_list = model_outputs['prototype_sim']   # List of (B, K, H, W) per scale
     elif mode == 'standard' and 'standard_boxes' in model_outputs:
-        boxes_list = model_outputs['standard_boxes']   # List of (B, 4*reg_max, H, W) per scale
+        boxes_list = model_outputs['standard_boxes']   # List of (B, 4, H, W) per scale
         scores_list = model_outputs['standard_cls']    # List of (B, nc, H, W) per scale
     elif mode == 'dual':
         # Use prototype head if available, otherwise standard
@@ -81,32 +81,28 @@ def postprocess_model_outputs(
     
     # Strides for each scale [P2, P3, P4, P5]
     strides = torch.tensor([4, 8, 16, 32], device=device, dtype=torch.float32)
-    reg_max = boxes_list[0].shape[1] // 4  # Extract reg_max from output shape (FIXED: no +1)
     
-    # Concatenate all scales following ultralytics format
-    # boxes: (B, 4*reg_max, H, W) -> (B, 4*reg_max, H*W) for each scale
+    # Concatenate all scales following direct bbox prediction format
+    # boxes: (B, 4, H, W) -> (B, 4, H*W) for each scale (direct bbox predictions in xyxy format)
     # scores: (B, K, H, W) -> (B, K, H*W) for each scale
     box_list_flat = []
     scores_list_flat = []
     
     for boxes, scores in zip(boxes_list, scores_list):
         B, C, H, W = boxes.shape
-        box_list_flat.append(boxes.view(B, C, -1))  # (B, 4*reg_max, H*W)
+        box_list_flat.append(boxes.view(B, C, -1))  # (B, 4, H*W)
         scores_list_flat.append(scores.view(B, scores.shape[1], -1))  # (B, K, H*W)
     
     # Concatenate across scales: (B, C, total_anchors)
-    box_cat = torch.cat(box_list_flat, dim=2)  # (B, 4*reg_max, total_anchors)
+    box_cat = torch.cat(box_list_flat, dim=2)  # (B, 4, total_anchors)
     scores_cat = torch.cat(scores_list_flat, dim=2)  # (B, K, total_anchors)
     
-    # Generate anchor points using ultralytics method
-    from src.models.dual_head import DFL
-    dfl = DFL(reg_max).to(device)  # FIXED: reg_max, not reg_max+1
-    
+    # Generate anchor points
     anchor_points_list = []
     stride_tensor_list = []
     for i, (boxes_scale, stride) in enumerate(zip(boxes_list, strides)):
         _, _, h, w = boxes_scale.shape
-        # Create grid (following ultralytics with 0.5 offset)
+        # Create grid (with 0.5 offset)
         sy = torch.arange(h, device=device, dtype=torch.float32) + 0.5
         sx = torch.arange(w, device=device, dtype=torch.float32) + 0.5
         sy, sx = torch.meshgrid(sy, sx, indexing='ij')
@@ -116,15 +112,9 @@ def postprocess_model_outputs(
     anchor_points = torch.cat(anchor_points_list)  # (total_anchors, 2)
     stride_tensor = torch.cat(stride_tensor_list)  # (total_anchors, 1)
     
-    # Apply DFL to decode boxes: (B, 4*reg_max, total_anchors) -> (B, 4, total_anchors)
-    dbox = dfl(box_cat)  # DFL expects (B, C, A) format where C = 4*reg_max
-    
-    # Decode bboxes using dist2bbox (following ultralytics)
-    from src.training.loss_utils import dist2bbox
-    # dbox: (B, 4, total_anchors), anchor_points: (total_anchors, 2)
-    # Need to permute for dist2bbox: (B, total_anchors, 4)
-    dbox = dbox.permute(0, 2, 1)  # (B, total_anchors, 4)
-    decoded_boxes = dist2bbox(dbox, anchor_points.unsqueeze(0), xywh=False, dim=-1)  # (B, total_anchors, 4) xyxy
+    # Boxes are already in direct format (B, 4, total_anchors) - no DFL decoding needed
+    # Permute to (B, total_anchors, 4) and scale by stride
+    decoded_boxes = box_cat.permute(0, 2, 1)  # (B, total_anchors, 4)
     decoded_boxes = decoded_boxes * stride_tensor.unsqueeze(0)  # Scale by stride: (B, total_anchors, 4) * (1, total_anchors, 1)
     
     # Apply sigmoid to scores and get class predictions

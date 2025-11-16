@@ -33,31 +33,6 @@ class Conv(nn.Module):
         return self.act(self.bn(self.conv(x)))
 
 
-class DFL(nn.Module):
-    """
-    Distribution Focal Loss (DFL) module.
-    Used in YOLOv8 for box regression.
-    
-    CRITICAL: Uses reg_max bins (16), NOT reg_max+1 (17).
-    This matches Ultralytics implementation exactly.
-    """
-    
-    def __init__(self, c1=16):
-        super().__init__()
-        self.conv = nn.Conv2d(c1, 1, 1, bias=False).requires_grad_(False)
-        x = torch.arange(c1, dtype=torch.float)
-        self.conv.weight.data[:] = nn.Parameter(x.view(1, c1, 1, 1))
-        self.c1 = c1
-    
-    def forward(self, x):
-        b, c, a = x.shape  # batch, channels, anchors
-        # Cast input to match conv weight dtype for mixed precision compatibility
-        # Expected input: (B, 4*reg_max, H*W) where c = 4*reg_max (e.g., 64 for reg_max=16)
-        x_reshaped = x.view(b, 4, self.c1, a).transpose(2, 1).softmax(1)
-        x_reshaped = x_reshaped.to(self.conv.weight.dtype)
-        return self.conv(x_reshaped).view(b, 4, a)
-
-
 class StandardDetectionHead(nn.Module):
     """
     Standard YOLOv8 detection head for base classes.
@@ -66,27 +41,25 @@ class StandardDetectionHead(nn.Module):
     Args:
         nc: Number of base classes
         ch: List of input channels for each scale [P2, P3, P4, P5]
-        reg_max: Maximum value for distribution focal loss (default: 16)
     """
     
-    def __init__(self, nc: int = 80, ch: List[int] = [128, 256, 512, 512], reg_max: int = 16):
+    def __init__(self, nc: int = 80, ch: List[int] = [128, 256, 512, 512]):
         super().__init__()
         
         self.nc = nc  # number of classes
         self.nl = len(ch)  # number of detection layers
-        self.reg_max = reg_max  # DFL channels
-        self.no = nc + reg_max * 4  # number of outputs per anchor
+        self.no = nc + 4  # number of outputs per anchor (4 bbox coords + nc classes)
         self.stride = torch.tensor([4, 8, 16, 32])  # strides for [P2, P3, P4, P5]
         
-        c2, c3 = max((16, ch[0] // 4, self.reg_max * 4)), max(ch[0], self.nc)  # channels
+        c2, c3 = max((16, ch[0] // 4)), max(ch[0], self.nc)  # channels
         
         # Build detection heads for each scale
-        # CRITICAL FIX: Output 4*reg_max channels (64 for reg_max=16), NOT 4*(reg_max+1) (68)
+        # Box regression: Direct bbox prediction (x1, y1, x2, y2) or (cx, cy, w, h)
         self.cv2 = nn.ModuleList(
             nn.Sequential(
                 Conv(x, c2, 3, padding=1),
                 Conv(c2, c2, 3, padding=1),
-                nn.Conv2d(c2, 4 * self.reg_max, 1)  # FIXED: 4*reg_max instead of 4*(reg_max+1)
+                nn.Conv2d(c2, 4, 1)  # 4 bbox coordinates
             ) for x in ch
         )
         
@@ -97,8 +70,6 @@ class StandardDetectionHead(nn.Module):
                 nn.Conv2d(c3, self.nc, 1)
             ) for x in ch
         )
-        
-        self.dfl = DFL(self.reg_max) if self.reg_max > 1 else nn.Identity()
         
         # Initialize weights for stability
         self._initialize_weights()
@@ -136,7 +107,7 @@ class StandardDetectionHead(nn.Module):
         cls_preds = []
         
         for i in range(self.nl):
-            # Box regression with clamping to prevent DFL explosion
+            # Box regression with clamping to prevent gradient explosion
             box_pred = self.cv2[i](x[i])
             box_pred = torch.clamp(box_pred, min=-10.0, max=10.0)
             box_preds.append(box_pred)
@@ -162,14 +133,12 @@ class PrototypeDetectionHead(nn.Module):
         ch: List[int] = [128, 256, 512, 512],
         proto_dims: List[int] = [32, 64, 128, 256],  # Scale-specific prototype dimensions
         temperature: float = 10.0,
-        reg_max: int = 16,
     ):
         super().__init__()
         
         self.nl = len(ch)
         self.proto_dims = proto_dims  # Store as list for scale-specific dims
         self.temperature = nn.Parameter(torch.tensor(temperature))
-        self.reg_max = reg_max
         self.stride = torch.tensor([4, 8, 16, 32])
         
         # Feature projection to prototype dimension (scale-specific)
@@ -180,18 +149,15 @@ class PrototypeDetectionHead(nn.Module):
             ) for c, pd in zip(ch, proto_dims)
         ])
         
-        # Box regression heads (same as standard head)
-        # CRITICAL FIX: Output 4*reg_max channels (64 for reg_max=16), NOT 4*(reg_max+1) (68)
-        c2 = max((16, ch[0] // 4, self.reg_max * 4))
+        # Box regression heads: Direct bbox prediction (4 coordinates)
+        c2 = max((16, ch[0] // 4))
         self.cv2 = nn.ModuleList(
             nn.Sequential(
                 Conv(x, c2, 3, padding=1),
                 Conv(c2, c2, 3, padding=1),
-                nn.Conv2d(c2, 4 * self.reg_max, 1)  # FIXED: 4*reg_max instead of 4*(reg_max+1)
+                nn.Conv2d(c2, 4, 1)  # 4 bbox coordinates (direct prediction)
             ) for x in ch
         )
-        
-        self.dfl = DFL(self.reg_max) if self.reg_max > 1 else nn.Identity()
         
         # Initialize weights for box regression head (critical for stability)
         self._initialize_weights()
@@ -245,7 +211,7 @@ class PrototypeDetectionHead(nn.Module):
                         m.bias.register_hook(gradient_clip_hook)
         
         # CRITICAL: Also register hooks on cv2 box regression layers
-        # These are prone to gradient explosion from WIoU and DFL losses
+        # These are prone to gradient explosion from WIoU loss
         for i, module in enumerate(self.cv2):
             for m in module.modules():
                 if isinstance(m, (nn.Conv2d, nn.BatchNorm2d)):
@@ -356,7 +322,7 @@ class PrototypeDetectionHead(nn.Module):
                 # No prototypes for this scale, return zeros
                 sim_scores.append(torch.zeros_like(feat_proj[:, :1]))
             
-            # Box regression (shared with features) with clamping to prevent DFL explosion
+            # Box regression (shared with features) with clamping to prevent gradient explosion
             box_pred = self.cv2[i](x[i])
             box_pred = torch.clamp(box_pred, min=-10.0, max=10.0)
             box_preds.append(box_pred)
@@ -385,7 +351,6 @@ class DualDetectionHead(nn.Module):
         temperature: float = 10.0,
         conf_thres: float = 0.25,
         iou_thres: float = 0.45,
-        reg_max: int = 16,
     ):
         super().__init__()
         
@@ -394,14 +359,13 @@ class DualDetectionHead(nn.Module):
         self.iou_thres = iou_thres
         
         # Standard head for base classes
-        self.standard_head = StandardDetectionHead(nc=nc_base, ch=ch, reg_max=reg_max)
+        self.standard_head = StandardDetectionHead(nc=nc_base, ch=ch)
         
         # Prototype head for novel classes
         self.prototype_head = PrototypeDetectionHead(
             ch=ch, 
             proto_dims=proto_dims, 
-            temperature=temperature,
-            reg_max=reg_max
+            temperature=temperature
         )
         
         print(f"Dual Detection Head initialized:")

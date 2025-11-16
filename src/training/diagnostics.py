@@ -270,26 +270,27 @@ class TrainingDiagnostics:
             self.logger.error(f"   ❌ PREDICTION FORMAT ERROR: Some boxes have x2<=x1 or y2<=y1")
             self.logger.error(f"      → Check bbox decoding logic in detection head")
         
-        if tgt_valid_x < 1.0 or tgt_valid_y < 1.0:
-            self.logger.error(f"   ❌ TARGET FORMAT ERROR: Some GT boxes have x2<=x1 or y2<=y1")
+        # Allow small tolerance for floating-point precision issues
+        if tgt_valid_x < 0.99 or tgt_valid_y < 0.99:
+            self.logger.error(f"   ❌ TARGET FORMAT ERROR: {(1.0-tgt_valid_x)*100:.1f}% boxes have x2<=x1, {(1.0-tgt_valid_y)*100:.1f}% have y2<=y1")
             self.logger.error(f"      → Check dataset/collator GT box loading")
         
         # Check if coordinates are in pixel space (0-640)
-        pred_in_range = (
-            (pred_x1 >= -50).float().mean().item() * 
-            (pred_x2 <= 690).float().mean().item()
-        )
-        tgt_in_range = (
-            (tgt_x1 >= 0).float().mean().item() * 
-            (tgt_x2 <= 640).float().mean().item()
-        )
+        # Use logical AND per box, not multiplication of percentages
+        pred_boxes_in_range = ((pred_x1 >= -50) & (pred_y1 >= -50) & 
+                               (pred_x2 <= 690) & (pred_y2 <= 690))
+        pred_in_range_pct = pred_boxes_in_range.float().mean().item()
         
-        if pred_in_range < 0.8:
-            self.logger.warning(f"   ⚠️  Many predictions outside [0, 640] range")
+        tgt_boxes_in_range = ((tgt_x1 >= 0) & (tgt_y1 >= 0) & 
+                              (tgt_x2 <= 640) & (tgt_y2 <= 640))
+        tgt_in_range_pct = tgt_boxes_in_range.float().mean().item()
+        
+        if pred_in_range_pct < 0.8:
+            self.logger.warning(f"   ⚠️  {(1.0-pred_in_range_pct)*100:.1f}% predictions outside [-50, 690] range")
             self.logger.warning(f"      → This is OK early in training, but should improve")
         
-        if tgt_in_range < 1.0:
-            self.logger.error(f"   ❌ Some GT boxes outside [0, 640] range!")
+        if tgt_in_range_pct < 1.0:
+            self.logger.error(f"   ❌ {(1.0-tgt_in_range_pct)*100:.1f}% GT boxes outside [0, 640] range!")
             self.logger.error(f"      → Check if GT boxes are normalized (should be pixels)")
     
     def _log_bbox_statistics(

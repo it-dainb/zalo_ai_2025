@@ -202,3 +202,325 @@ Loss Inputs:
 Detection Forward Pass:
 [2025-11-16 21:52:24] DEBUG -   Support images: N=2, K=3, C=3, H=512, W=512
 [2025-11-16 21:52:24] DEBUG -   Query images: torch.Size([8, 3, 640, 640])
+[2025-11-16 21:52:26] DEBUG - 
+Model Outputs:
+[2025-11-16 21:52:26] DEBUG -   prototype_boxes: List of 4 tensors, first shape=torch.Size([8, 4, 160, 160])
+[2025-11-16 21:52:26] DEBUG -   prototype_sim: List of 4 tensors, first shape=torch.Size([8, 2, 160, 160])
+[2025-11-16 21:52:26] DEBUG -   query_features: torch.Size([8, 128]), range=[-0.2500, 1.8467]
+[2025-11-16 21:52:26] DEBUG -   support_prototypes: torch.Size([2, 128]), range=[-0.0247, 0.3370]
+[2025-11-16 21:52:26] DEBUG - 
+Loss Inputs:
+[2025-11-16 21:52:26] DEBUG -   pred_bboxes: torch.Size([619, 4])
+[2025-11-16 21:52:26] DEBUG -   pred_cls_logits: torch.Size([619, 2])
+[2025-11-16 21:52:26] DEBUG -   target_bboxes: torch.Size([619, 4])
+[2025-11-16 21:52:26] DEBUG -   target_cls: torch.Size([619, 2])
+[2025-11-16 21:52:26] DEBUG -   proposal_features: torch.Size([619, 512])
+[2025-11-16 21:52:26] DEBUG -   proposal_labels: torch.Size([619])
+[2025-11-16 21:52:26] DEBUG -   query_features: torch.Size([8, 128])
+[2025-11-16 21:52:26] DEBUG -   support_prototypes: torch.Size([2, 128])
+[2025-11-16 21:52:26] DEBUG -   feature_labels: torch.Size([8])
+[2025-11-16 21:52:26] DEBUG -   triplet_embeddings: torch.Size([8, 128])
+[2025-11-16 21:52:26] DEBUG -   triplet_labels: torch.Size([8])
+[2025-11-16 21:52:27] DEBUG - 
+Detection Forward Pass:
+[2025-11-16 21:52:27] DEBUG -   Support images: N=2, K=3, C=3, H=512, W=512
+[2025-11-16 21:52:27] DEBUG -   Query images: torch.Size([8, 3, 640, 640])
+[2025-11-16 21:52:29] DEBUG - 
+Model Outputs:
+[2025-11-16 21:52:29] DEBUG -   prototype_boxes: List of 4 tensors, first shape=torch.Size([8, 4, 160, 160])
+[2025-11-16 21:52:29] DEBUG -   prototype_sim: List of 4 tensors, first shape=torch.Size([8, 2, 160, 160])
+[2025-11-16 21:52:29] DEBUG -   query_features: torch.Size([8, 128]), range=[-0.2474, 1.8184]
+[2025-11-16 21:52:29] DEBUG -   support_prototypes: torch.Size([2, 128]), range=[-0.0237, 0.3565]
+[2025-11-16 21:52:30] DEBUG - 
+Loss Inputs:
+[2025-11-16 21:52:30] DEBUG -   pred_bboxes: torch.Size([456, 4])
+[2025-11-16 21:52:30] DEBUG -   pred_cls_logits: torch.Size([456, 2])
+[2025-11-16 21:52:30] DEBUG -   target_bboxes: torch.Size([456, 4])
+[2025-11-16 21:52:30] DEBUG -   target_cls: torch.Size([456, 2])
+[2025-11-16 21:52:30] DEBUG -   proposal_features: torch.Size([456, 512])
+[2025-11-16 21:52:30] DEBUG -   proposal_labels: torch.Size([456])
+[2025-11-16 21:52:30] DEBUG -   query_features: torch.Size([8, 128])
+[2025-11-16 21:52:30] DEBUG -   support_prototypes: torch.Size([2, 128])
+[2025-11-16 21:52:30] DEBUG -   feature_labels: torch.Size([8])
+[2025-11-16 21:52:30] DEBUG -   triplet_embeddings: torch.Size([8, 128])
+[2025-11-16 21:52:30] DEBUG -   triplet_labels: torch.Size([8])
+[2025-11-16 21:52:30] DEBUG - 
+Detection Forward Pass:
+[2025-11-16 21:52:30] DEBUG -   Support images: N=2, K=3, C=3, H=512, W=512
+[2025-11-16 21:52:30] DEBUG -   Query images: torch.Size([8, 3, 640, 640])
+[2025-11-16 21:52:31] DEBUG - 
+Model Outputs:
+[2025-11-16 21:52:31] DEBUG -   prototype_boxes: List of 4 tensors, first shape=torch.Size([8, 4, 160, 160])
+[2025-11-16 21:52:31] DEBUG -   prototype_sim: List of 4 tensors, first shape=torch.Size([8, 2, 160, 160])
+[2025-11-16 21:52:31] DEBUG -   query_features: torch.Size([8, 128]), range=[-0.2581, 1.7461]
+[2025-11-16 21:52:31] DEBUG -   support_prototypes: torch.Size([2, 128]), range=[-0.0237, 0.3540]
+[2025-11-16 21:52:32] DEBUG - 
+Loss Inputs:
+[2025-11-16 21:52:32] DEBUG -   pred_bboxes: torch.Size([148, 4])
+[2025-11-16 21:52:32] DEBUG -   pred_cls_logits: torch.Size([148, 2])
+[2025-11-16 21:52:32] DEBUG -   target_bboxes: torch.Size([148, 4])
+[2025-11-16 21:52:32] DEBUG -   target_cls: torch.Size([148, 2])
+[2025-11-16 21:52:32] DEBUG -   proposal_features: torch.Size([148, 512])
+[2025-11-16 21:52:32] DEBUG -   proposal_labels: torch.Size([148])
+[2025-11-16 21:52:32] DEBUG -   query_features: torch.Size([8, 128])
+[2025-11-16 21:52:32] DEBUG -   support_prototypes: torch.Size([2, 128])
+[2025-11-16 21:52:32] DEBUG -   feature_labels: torch.Size([8])
+[2025-11-16 21:52:32] DEBUG -   triplet_embeddings: torch.Size([8, 128])
+[2025-11-16 21:52:32] DEBUG -   triplet_labels: torch.Size([8])
+[2025-11-16 21:52:32] DEBUG - 
+Detection Forward Pass:
+[2025-11-16 21:52:32] DEBUG -   Support images: N=2, K=3, C=3, H=512, W=512
+[2025-11-16 21:52:32] DEBUG -   Query images: torch.Size([8, 3, 640, 640])
+[2025-11-16 21:52:34] DEBUG - 
+Model Outputs:
+[2025-11-16 21:52:34] DEBUG -   prototype_boxes: List of 4 tensors, first shape=torch.Size([8, 4, 160, 160])
+[2025-11-16 21:52:34] DEBUG -   prototype_sim: List of 4 tensors, first shape=torch.Size([8, 2, 160, 160])
+[2025-11-16 21:52:34] DEBUG -   query_features: torch.Size([8, 128]), range=[-0.2455, 1.7295]
+[2025-11-16 21:52:34] DEBUG -   support_prototypes: torch.Size([2, 128]), range=[-0.0245, 0.2866]
+[2025-11-16 21:52:34] DEBUG - 
+Loss Inputs:
+[2025-11-16 21:52:34] DEBUG -   pred_bboxes: torch.Size([470, 4])
+[2025-11-16 21:52:34] DEBUG -   pred_cls_logits: torch.Size([470, 2])
+[2025-11-16 21:52:34] DEBUG -   target_bboxes: torch.Size([470, 4])
+[2025-11-16 21:52:34] DEBUG -   target_cls: torch.Size([470, 2])
+[2025-11-16 21:52:34] DEBUG -   proposal_features: torch.Size([470, 512])
+[2025-11-16 21:52:34] DEBUG -   proposal_labels: torch.Size([470])
+[2025-11-16 21:52:34] DEBUG -   query_features: torch.Size([8, 128])
+[2025-11-16 21:52:34] DEBUG -   support_prototypes: torch.Size([2, 128])
+[2025-11-16 21:52:34] DEBUG -   feature_labels: torch.Size([8])
+[2025-11-16 21:52:34] DEBUG -   triplet_embeddings: torch.Size([8, 128])
+[2025-11-16 21:52:34] DEBUG -   triplet_labels: torch.Size([8])
+[2025-11-16 21:52:34] DEBUG - 
+Detection Forward Pass:
+[2025-11-16 21:52:34] DEBUG -   Support images: N=2, K=3, C=3, H=512, W=512
+[2025-11-16 21:52:34] DEBUG -   Query images: torch.Size([8, 3, 640, 640])
+[2025-11-16 21:52:36] DEBUG - 
+Model Outputs:
+[2025-11-16 21:52:36] DEBUG -   prototype_boxes: List of 4 tensors, first shape=torch.Size([8, 4, 160, 160])
+[2025-11-16 21:52:36] DEBUG -   prototype_sim: List of 4 tensors, first shape=torch.Size([8, 2, 160, 160])
+[2025-11-16 21:52:36] DEBUG -   query_features: torch.Size([8, 128]), range=[-0.2505, 1.8105]
+[2025-11-16 21:52:36] DEBUG -   support_prototypes: torch.Size([2, 128]), range=[-0.0236, 0.3522]
+[2025-11-16 21:52:36] DEBUG - 
+Loss Inputs:
+[2025-11-16 21:52:36] DEBUG -   pred_bboxes: torch.Size([726, 4])
+[2025-11-16 21:52:36] DEBUG -   pred_cls_logits: torch.Size([726, 2])
+[2025-11-16 21:52:36] DEBUG -   target_bboxes: torch.Size([726, 4])
+[2025-11-16 21:52:36] DEBUG -   target_cls: torch.Size([726, 2])
+[2025-11-16 21:52:36] DEBUG -   proposal_features: torch.Size([726, 512])
+[2025-11-16 21:52:36] DEBUG -   proposal_labels: torch.Size([726])
+[2025-11-16 21:52:36] DEBUG -   query_features: torch.Size([8, 128])
+[2025-11-16 21:52:36] DEBUG -   support_prototypes: torch.Size([2, 128])
+[2025-11-16 21:52:36] DEBUG -   feature_labels: torch.Size([8])
+[2025-11-16 21:52:36] DEBUG -   triplet_embeddings: torch.Size([8, 128])
+[2025-11-16 21:52:36] DEBUG -   triplet_labels: torch.Size([8])
+[2025-11-16 21:52:37] DEBUG - 
+Detection Forward Pass:
+[2025-11-16 21:52:37] DEBUG -   Support images: N=2, K=3, C=3, H=512, W=512
+[2025-11-16 21:52:37] DEBUG -   Query images: torch.Size([8, 3, 640, 640])
+[2025-11-16 21:52:38] DEBUG - 
+Model Outputs:
+[2025-11-16 21:52:38] DEBUG -   prototype_boxes: List of 4 tensors, first shape=torch.Size([8, 4, 160, 160])
+[2025-11-16 21:52:38] DEBUG -   prototype_sim: List of 4 tensors, first shape=torch.Size([8, 2, 160, 160])
+[2025-11-16 21:52:39] DEBUG -   query_features: torch.Size([8, 128]), range=[-0.2520, 1.7666]
+[2025-11-16 21:52:39] DEBUG -   support_prototypes: torch.Size([2, 128]), range=[-0.0241, 0.2657]
+[2025-11-16 21:52:39] DEBUG - 
+Loss Inputs:
+[2025-11-16 21:52:39] DEBUG -   pred_bboxes: torch.Size([333, 4])
+[2025-11-16 21:52:39] DEBUG -   pred_cls_logits: torch.Size([333, 2])
+[2025-11-16 21:52:39] DEBUG -   target_bboxes: torch.Size([333, 4])
+[2025-11-16 21:52:39] DEBUG -   target_cls: torch.Size([333, 2])
+[2025-11-16 21:52:39] DEBUG -   proposal_features: torch.Size([333, 512])
+[2025-11-16 21:52:39] DEBUG -   proposal_labels: torch.Size([333])
+[2025-11-16 21:52:39] DEBUG -   query_features: torch.Size([8, 128])
+[2025-11-16 21:52:39] DEBUG -   support_prototypes: torch.Size([2, 128])
+[2025-11-16 21:52:39] DEBUG -   feature_labels: torch.Size([8])
+[2025-11-16 21:52:39] DEBUG -   triplet_embeddings: torch.Size([8, 128])
+[2025-11-16 21:52:39] DEBUG -   triplet_labels: torch.Size([8])
+[2025-11-16 21:52:39] DEBUG - 
+Detection Forward Pass:
+[2025-11-16 21:52:39] DEBUG -   Support images: N=2, K=3, C=3, H=512, W=512
+[2025-11-16 21:52:39] DEBUG -   Query images: torch.Size([8, 3, 640, 640])
+[2025-11-16 21:52:41] DEBUG - 
+Model Outputs:
+[2025-11-16 21:52:41] DEBUG -   prototype_boxes: List of 4 tensors, first shape=torch.Size([8, 4, 160, 160])
+[2025-11-16 21:52:41] DEBUG -   prototype_sim: List of 4 tensors, first shape=torch.Size([8, 2, 160, 160])
+[2025-11-16 21:52:41] DEBUG -   query_features: torch.Size([8, 128]), range=[-0.2517, 1.8213]
+[2025-11-16 21:52:41] DEBUG -   support_prototypes: torch.Size([2, 128]), range=[-0.0246, 0.3283]
+[2025-11-16 21:52:41] DEBUG - 
+Loss Inputs:
+[2025-11-16 21:52:41] DEBUG -   pred_bboxes: torch.Size([842, 4])
+[2025-11-16 21:52:41] DEBUG -   pred_cls_logits: torch.Size([842, 2])
+[2025-11-16 21:52:41] DEBUG -   target_bboxes: torch.Size([842, 4])
+[2025-11-16 21:52:41] DEBUG -   target_cls: torch.Size([842, 2])
+[2025-11-16 21:52:41] DEBUG -   proposal_features: torch.Size([842, 512])
+[2025-11-16 21:52:41] DEBUG -   proposal_labels: torch.Size([842])
+[2025-11-16 21:52:41] DEBUG -   query_features: torch.Size([8, 128])
+[2025-11-16 21:52:41] DEBUG -   support_prototypes: torch.Size([2, 128])
+[2025-11-16 21:52:41] DEBUG -   feature_labels: torch.Size([8])
+[2025-11-16 21:52:41] DEBUG -   triplet_embeddings: torch.Size([8, 128])
+[2025-11-16 21:52:41] DEBUG -   triplet_labels: torch.Size([8])
+[2025-11-16 21:52:42] DEBUG - 
+Detection Forward Pass:
+[2025-11-16 21:52:42] DEBUG -   Support images: N=2, K=3, C=3, H=512, W=512
+[2025-11-16 21:52:42] DEBUG -   Query images: torch.Size([8, 3, 640, 640])
+[2025-11-16 21:52:43] DEBUG - 
+Model Outputs:
+[2025-11-16 21:52:43] DEBUG -   prototype_boxes: List of 4 tensors, first shape=torch.Size([8, 4, 160, 160])
+[2025-11-16 21:52:43] DEBUG -   prototype_sim: List of 4 tensors, first shape=torch.Size([8, 2, 160, 160])
+[2025-11-16 21:52:44] DEBUG -   query_features: torch.Size([8, 128]), range=[-0.2440, 1.7646]
+[2025-11-16 21:52:44] DEBUG -   support_prototypes: torch.Size([2, 128]), range=[-0.0247, 0.3215]
+[2025-11-16 21:52:44] DEBUG - 
+Loss Inputs:
+[2025-11-16 21:52:44] DEBUG -   pred_bboxes: torch.Size([624, 4])
+[2025-11-16 21:52:44] DEBUG -   pred_cls_logits: torch.Size([624, 2])
+[2025-11-16 21:52:44] DEBUG -   target_bboxes: torch.Size([624, 4])
+[2025-11-16 21:52:44] DEBUG -   target_cls: torch.Size([624, 2])
+[2025-11-16 21:52:44] DEBUG -   proposal_features: torch.Size([624, 512])
+[2025-11-16 21:52:44] DEBUG -   proposal_labels: torch.Size([624])
+[2025-11-16 21:52:44] DEBUG -   query_features: torch.Size([8, 128])
+[2025-11-16 21:52:44] DEBUG -   support_prototypes: torch.Size([2, 128])
+[2025-11-16 21:52:44] DEBUG -   feature_labels: torch.Size([8])
+[2025-11-16 21:52:44] DEBUG -   triplet_embeddings: torch.Size([8, 128])
+[2025-11-16 21:52:44] DEBUG -   triplet_labels: torch.Size([8])
+[2025-11-16 21:52:44] DEBUG - 
+Detection Forward Pass:
+[2025-11-16 21:52:44] DEBUG -   Support images: N=2, K=3, C=3, H=512, W=512
+[2025-11-16 21:52:44] DEBUG -   Query images: torch.Size([8, 3, 640, 640])
+[2025-11-16 21:52:45] DEBUG - 
+Model Outputs:
+[2025-11-16 21:52:45] DEBUG -   prototype_boxes: List of 4 tensors, first shape=torch.Size([8, 4, 160, 160])
+[2025-11-16 21:52:45] DEBUG -   prototype_sim: List of 4 tensors, first shape=torch.Size([8, 2, 160, 160])
+[2025-11-16 21:52:46] DEBUG -   query_features: torch.Size([8, 128]), range=[-0.2529, 1.7744]
+[2025-11-16 21:52:46] DEBUG -   support_prototypes: torch.Size([2, 128]), range=[-0.0241, 0.2972]
+[2025-11-16 21:52:46] DEBUG - 
+Loss Inputs:
+[2025-11-16 21:52:46] DEBUG -   pred_bboxes: torch.Size([568, 4])
+[2025-11-16 21:52:46] DEBUG -   pred_cls_logits: torch.Size([568, 2])
+[2025-11-16 21:52:46] DEBUG -   target_bboxes: torch.Size([568, 4])
+[2025-11-16 21:52:46] DEBUG -   target_cls: torch.Size([568, 2])
+[2025-11-16 21:52:46] DEBUG -   proposal_features: torch.Size([568, 512])
+[2025-11-16 21:52:46] DEBUG -   proposal_labels: torch.Size([568])
+[2025-11-16 21:52:46] DEBUG -   query_features: torch.Size([8, 128])
+[2025-11-16 21:52:46] DEBUG -   support_prototypes: torch.Size([2, 128])
+[2025-11-16 21:52:46] DEBUG -   feature_labels: torch.Size([8])
+[2025-11-16 21:52:46] DEBUG -   triplet_embeddings: torch.Size([8, 128])
+[2025-11-16 21:52:46] DEBUG -   triplet_labels: torch.Size([8])
+[2025-11-16 21:52:47] DEBUG - 
+Detection Forward Pass:
+[2025-11-16 21:52:47] DEBUG -   Support images: N=2, K=3, C=3, H=512, W=512
+[2025-11-16 21:52:47] DEBUG -   Query images: torch.Size([8, 3, 640, 640])
+[2025-11-16 21:52:48] DEBUG - 
+Model Outputs:
+[2025-11-16 21:52:48] DEBUG -   prototype_boxes: List of 4 tensors, first shape=torch.Size([8, 4, 160, 160])
+[2025-11-16 21:52:48] DEBUG -   prototype_sim: List of 4 tensors, first shape=torch.Size([8, 2, 160, 160])
+[2025-11-16 21:52:48] DEBUG -   query_features: torch.Size([8, 128]), range=[-0.2457, 1.8828]
+[2025-11-16 21:52:48] DEBUG -   support_prototypes: torch.Size([2, 128]), range=[-0.0238, 0.3291]
+[2025-11-16 21:52:49] DEBUG - 
+Loss Inputs:
+[2025-11-16 21:52:49] DEBUG -   pred_bboxes: torch.Size([491, 4])
+[2025-11-16 21:52:49] DEBUG -   pred_cls_logits: torch.Size([491, 2])
+[2025-11-16 21:52:49] DEBUG -   target_bboxes: torch.Size([491, 4])
+[2025-11-16 21:52:49] DEBUG -   target_cls: torch.Size([491, 2])
+[2025-11-16 21:52:49] DEBUG -   proposal_features: torch.Size([491, 512])
+[2025-11-16 21:52:49] DEBUG -   proposal_labels: torch.Size([491])
+[2025-11-16 21:52:49] DEBUG -   query_features: torch.Size([8, 128])
+[2025-11-16 21:52:49] DEBUG -   support_prototypes: torch.Size([2, 128])
+[2025-11-16 21:52:49] DEBUG -   feature_labels: torch.Size([8])
+[2025-11-16 21:52:49] DEBUG -   triplet_embeddings: torch.Size([8, 128])
+[2025-11-16 21:52:49] DEBUG -   triplet_labels: torch.Size([8])
+[2025-11-16 21:52:49] DEBUG - 
+Detection Forward Pass:
+[2025-11-16 21:52:49] DEBUG -   Support images: N=2, K=3, C=3, H=512, W=512
+[2025-11-16 21:52:49] DEBUG -   Query images: torch.Size([8, 3, 640, 640])
+[2025-11-16 21:52:51] DEBUG - 
+Model Outputs:
+[2025-11-16 21:52:51] DEBUG -   prototype_boxes: List of 4 tensors, first shape=torch.Size([8, 4, 160, 160])
+[2025-11-16 21:52:51] DEBUG -   prototype_sim: List of 4 tensors, first shape=torch.Size([8, 2, 160, 160])
+[2025-11-16 21:52:51] DEBUG -   query_features: torch.Size([8, 128]), range=[-0.2559, 1.7803]
+[2025-11-16 21:52:51] DEBUG -   support_prototypes: torch.Size([2, 128]), range=[-0.0247, 0.3273]
+[2025-11-16 21:52:51] DEBUG - 
+Loss Inputs:
+[2025-11-16 21:52:51] DEBUG -   pred_bboxes: torch.Size([155, 4])
+[2025-11-16 21:52:51] DEBUG -   pred_cls_logits: torch.Size([155, 2])
+[2025-11-16 21:52:51] DEBUG -   target_bboxes: torch.Size([155, 4])
+[2025-11-16 21:52:51] DEBUG -   target_cls: torch.Size([155, 2])
+[2025-11-16 21:52:51] DEBUG -   proposal_features: torch.Size([155, 512])
+[2025-11-16 21:52:51] DEBUG -   proposal_labels: torch.Size([155])
+[2025-11-16 21:52:51] DEBUG -   query_features: torch.Size([8, 128])
+[2025-11-16 21:52:51] DEBUG -   support_prototypes: torch.Size([2, 128])
+[2025-11-16 21:52:51] DEBUG -   feature_labels: torch.Size([8])
+[2025-11-16 21:52:51] DEBUG -   triplet_embeddings: torch.Size([8, 128])
+[2025-11-16 21:52:51] DEBUG -   triplet_labels: torch.Size([8])
+[2025-11-16 21:52:51] DEBUG - 
+Detection Forward Pass:
+[2025-11-16 21:52:51] DEBUG -   Support images: N=2, K=3, C=3, H=512, W=512
+[2025-11-16 21:52:51] DEBUG -   Query images: torch.Size([8, 3, 640, 640])
+[2025-11-16 21:52:53] DEBUG - 
+Model Outputs:
+[2025-11-16 21:52:53] DEBUG -   prototype_boxes: List of 4 tensors, first shape=torch.Size([8, 4, 160, 160])
+[2025-11-16 21:52:53] DEBUG -   prototype_sim: List of 4 tensors, first shape=torch.Size([8, 2, 160, 160])
+[2025-11-16 21:52:53] DEBUG -   query_features: torch.Size([8, 128]), range=[-0.2433, 1.7842]
+[2025-11-16 21:52:53] DEBUG -   support_prototypes: torch.Size([2, 128]), range=[-0.0235, 0.3283]
+[2025-11-16 21:52:53] DEBUG - 
+Loss Inputs:
+[2025-11-16 21:52:53] DEBUG -   pred_bboxes: torch.Size([650, 4])
+[2025-11-16 21:52:53] DEBUG -   pred_cls_logits: torch.Size([650, 2])
+[2025-11-16 21:52:53] DEBUG -   target_bboxes: torch.Size([650, 4])
+[2025-11-16 21:52:53] DEBUG -   target_cls: torch.Size([650, 2])
+[2025-11-16 21:52:53] DEBUG -   proposal_features: torch.Size([650, 512])
+[2025-11-16 21:52:53] DEBUG -   proposal_labels: torch.Size([650])
+[2025-11-16 21:52:53] DEBUG -   query_features: torch.Size([8, 128])
+[2025-11-16 21:52:53] DEBUG -   support_prototypes: torch.Size([2, 128])
+[2025-11-16 21:52:53] DEBUG -   feature_labels: torch.Size([8])
+[2025-11-16 21:52:53] DEBUG -   triplet_embeddings: torch.Size([8, 128])
+[2025-11-16 21:52:53] DEBUG -   triplet_labels: torch.Size([8])
+[2025-11-16 21:52:53] DEBUG - 
+Detection Forward Pass:
+[2025-11-16 21:52:53] DEBUG -   Support images: N=2, K=3, C=3, H=512, W=512
+[2025-11-16 21:52:53] DEBUG -   Query images: torch.Size([8, 3, 640, 640])
+[2025-11-16 21:52:55] DEBUG - 
+Model Outputs:
+[2025-11-16 21:52:55] DEBUG -   prototype_boxes: List of 4 tensors, first shape=torch.Size([8, 4, 160, 160])
+[2025-11-16 21:52:55] DEBUG -   prototype_sim: List of 4 tensors, first shape=torch.Size([8, 2, 160, 160])
+[2025-11-16 21:52:55] DEBUG -   query_features: torch.Size([8, 128]), range=[-0.2639, 1.7852]
+[2025-11-16 21:52:55] DEBUG -   support_prototypes: torch.Size([2, 128]), range=[-0.0246, 0.2774]
+[2025-11-16 21:52:55] DEBUG - 
+Loss Inputs:
+[2025-11-16 21:52:55] DEBUG -   pred_bboxes: torch.Size([242, 4])
+[2025-11-16 21:52:55] DEBUG -   pred_cls_logits: torch.Size([242, 2])
+[2025-11-16 21:52:55] DEBUG -   target_bboxes: torch.Size([242, 4])
+[2025-11-16 21:52:55] DEBUG -   target_cls: torch.Size([242, 2])
+[2025-11-16 21:52:55] DEBUG -   proposal_features: torch.Size([242, 512])
+[2025-11-16 21:52:55] DEBUG -   proposal_labels: torch.Size([242])
+[2025-11-16 21:52:55] DEBUG -   query_features: torch.Size([8, 128])
+[2025-11-16 21:52:55] DEBUG -   support_prototypes: torch.Size([2, 128])
+[2025-11-16 21:52:55] DEBUG -   feature_labels: torch.Size([8])
+[2025-11-16 21:52:55] DEBUG -   triplet_embeddings: torch.Size([8, 128])
+[2025-11-16 21:52:55] DEBUG -   triplet_labels: torch.Size([8])
+[2025-11-16 21:52:55] DEBUG - 
+Detection Forward Pass:
+[2025-11-16 21:52:55] DEBUG -   Support images: N=2, K=3, C=3, H=512, W=512
+[2025-11-16 21:52:55] DEBUG -   Query images: torch.Size([8, 3, 640, 640])
+[2025-11-16 21:52:57] DEBUG - 
+Model Outputs:
+[2025-11-16 21:52:57] DEBUG -   prototype_boxes: List of 4 tensors, first shape=torch.Size([8, 4, 160, 160])
+[2025-11-16 21:52:57] DEBUG -   prototype_sim: List of 4 tensors, first shape=torch.Size([8, 2, 160, 160])
+[2025-11-16 21:52:57] DEBUG -   query_features: torch.Size([8, 128]), range=[-0.2502, 1.8047]
+[2025-11-16 21:52:57] DEBUG -   support_prototypes: torch.Size([2, 128]), range=[-0.0242, 0.2984]
+[2025-11-16 21:52:57] DEBUG - 
+Loss Inputs:
+[2025-11-16 21:52:57] DEBUG -   pred_bboxes: torch.Size([325, 4])
+[2025-11-16 21:52:57] DEBUG -   pred_cls_logits: torch.Size([325, 2])
+[2025-11-16 21:52:57] DEBUG -   target_bboxes: torch.Size([325, 4])
+[2025-11-16 21:52:57] DEBUG -   target_cls: torch.Size([325, 2])
+[2025-11-16 21:52:57] DEBUG -   proposal_features: torch.Size([325, 512])
+[2025-11-16 21:52:57] DEBUG -   proposal_labels: torch.Size([325])
+[2025-11-16 21:52:57] DEBUG -   query_features: torch.Size([8, 128])
+[2025-11-16 21:52:57] DEBUG -   support_prototypes: torch.Size([2, 128])
+[2025-11-16 21:52:57] DEBUG -   feature_labels: torch.Size([8])
+[2025-11-16 21:52:57] DEBUG -   triplet_embeddings: torch.Size([8, 128])
+[2025-11-16 21:52:57] DEBUG -   triplet_labels: torch.Size([8])
+[2025-11-16 21:52:57] DEBUG - 
+Detection Forward Pass:
+[2025-11-16 21:52:57] DEBUG -   Support images: N=2, K=3, C=3, H=512, W=512
+[2025-11-16 21:52:57] DEBUG -   Query images: torch.Size([8, 3, 640, 640])

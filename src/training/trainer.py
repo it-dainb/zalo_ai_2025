@@ -492,7 +492,7 @@ class RefDetTrainer:
                     if self.diagnostics.enable and hasattr(self, '_current_diagnostic_data'):
                         diag_data = self._current_diagnostic_data
                         loss_inputs = diag_data['loss_inputs']
-                        diagnostic_data = loss_inputs.get('diagnostic_data')
+                        diagnostic_data = diag_data.get('diagnostic_data')
                         
                         if diagnostic_data is not None:
                             self.diagnostics.log_batch_diagnostics(
@@ -1153,6 +1153,9 @@ class RefDetTrainer:
                 elif isinstance(val, list):
                     self.logger.debug(f"  {key}: List of length {len(val)}")
         
+        # Extract diagnostic_data before passing to loss function
+        diagnostic_data = loss_inputs.pop('diagnostic_data', None)
+        
         # Compute loss
         losses = self.loss_fn(**loss_inputs)
         
@@ -1165,9 +1168,10 @@ class RefDetTrainer:
             self._loss_tensors_for_check = {k: v for k, v in losses.items() if k != 'total_loss'}
         
         # Store diagnostic data for later use
-        if self.diagnostics.enable and loss_inputs.get('diagnostic_data') is not None:
+        if self.diagnostics.enable and diagnostic_data is not None:
             self._current_diagnostic_data = {
                 'loss_inputs': loss_inputs,
+                'diagnostic_data': diagnostic_data,
                 'losses_dict': losses_dict,
                 'batch': batch,
             }

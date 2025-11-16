@@ -45,6 +45,8 @@ from src.augmentations import get_stage_config, get_yolov8_augmentation_params, 
 from src.training.trainer import RefDetTrainer
 from src.training.logging_utils import setup_logger, get_experiment_name, log_experiment_config
 
+from src.datasets.episode_calculator import auto_calculate_episodes
+
 try:
     import wandb
     WANDB_AVAILABLE = True
@@ -207,7 +209,6 @@ def create_dataloaders(args, aug_config):
     
     # Calculate n_episodes automatically if requested
     if args.auto_episodes:
-        from src.datasets.episode_calculator import auto_calculate_episodes
         
         print(f"\n{'='*70}")
         print("AUTO-CALCULATING N_EPISODES")

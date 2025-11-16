@@ -454,25 +454,62 @@ def create_optimizer(args, model):
 
 def create_scheduler(args, optimizer, train_loader):
     """
-    Create cosine annealing learning rate scheduler.
+    Create cosine annealing learning rate scheduler with linear warmup.
     
     Schedule:
-        - Cosine decay from base LR to 0.01× base LR
-        - Smooth transitions for stable training
-        - No warmup (using pretrained backbones)
+        1. Linear warmup: 0 → base LR over first 5% of training (warmup phase)
+        2. Cosine decay: base LR → 0.01× base LR over remaining 95% (main training)
+    
+    Warmup Benefits:
+        - Prevents early training instability from large gradients
+        - Especially important for detection heads initialized from scratch
+        - Allows pretrained backbones to adapt gradually
+        - Reduces risk of gradient explosion in early epochs
+    
+    Warmup Duration:
+        - 5% of total steps is optimal for few-shot learning:
+          * Too short (<2%): May not prevent early instability
+          * Too long (>10%): Wastes training time at suboptimal LR
+          * 5% provides good balance for episodic training
     """
+    from torch.optim.lr_scheduler import LambdaLR
+    
     total_steps = args.epochs * len(train_loader)
+    warmup_steps = int(total_steps * 0.05)  # 5% warmup
+    cosine_steps = total_steps - warmup_steps
     
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-        optimizer,
-        T_max=total_steps,
-        eta_min=args.lr * 0.01,
-    )
+    def lr_lambda(current_step: int) -> float:
+        """
+        Compute learning rate multiplier for current step.
+        
+        Returns:
+            float: LR multiplier in [eta_min/base_lr, 1.0]
+        """
+        if current_step < warmup_steps:
+            # Linear warmup: 0 → 1.0
+            return float(current_step) / float(warmup_steps) if warmup_steps > 0 else 1.0
+        else:
+            # Cosine annealing: 1.0 → eta_min (0.01)
+            progress = float(current_step - warmup_steps) / float(cosine_steps)
+            # Cosine decay formula: 0.5 * (1 + cos(π * progress))
+            # Scale to [0.01, 1.0] range
+            import math
+            cosine_decay = 0.5 * (1.0 + math.cos(math.pi * progress))
+            return 0.01 + (1.0 - 0.01) * cosine_decay
     
-    print(f"\nScheduler: CosineAnnealingLR")
+    scheduler = LambdaLR(optimizer, lr_lambda=lr_lambda)
+    
+    print(f"\nScheduler: CosineAnnealingLR with Linear Warmup")
     print(f"  Total steps: {total_steps} ({args.epochs} epochs × {len(train_loader)} batches)")
-    print(f"  Initial LR: {args.lr:.6f}")
-    print(f"  Min LR: {args.lr * 0.01:.6f}")
+    print(f"  Warmup steps: {warmup_steps} (~{warmup_steps/total_steps*100:.1f}% of training)")
+    print(f"  Warmup epochs: ~{warmup_steps/len(train_loader):.2f} epochs")
+    print(f"  Cosine annealing steps: {cosine_steps}")
+    print(f"  Initial LR (after warmup): {args.lr:.6f}")
+    print(f"  Min LR (end of training): {args.lr * 0.01:.6f}")
+    print(f"  LR schedule:")
+    print(f"    Step 0: {0.0:.6f} (start of warmup)")
+    print(f"    Step {warmup_steps}: {args.lr:.6f} (end of warmup, start of cosine)")
+    print(f"    Step {total_steps}: {args.lr * 0.01:.6f} (end of training)")
     
     return scheduler
 

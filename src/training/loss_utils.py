@@ -384,10 +384,14 @@ def prepare_loss_inputs(
             # Initialize DFL decoder
             dfl_decoder = DFLoss(reg_max=reg_max)
             
+            # CRITICAL: Clamp DFL distributions BEFORE decoding to prevent gradient explosion
+            # DFL distributions can contain extreme values that cause NaN gradients
+            matched_pred_dfl_dist_clamped = torch.clamp(matched_pred_dfl_dist, min=-10.0, max=10.0)
+            
             # Decode DFL dist to distances in grid cell units [0, reg_max]
             # matched_pred_dfl_dist: (M, 4*(reg_max+1))
             # decoded_dists_grid: (M, 4) in [0, reg_max] range (grid cell units)
-            decoded_dists_grid = dfl_decoder.decode(matched_pred_dfl_dist)  # (M, 4) [left, top, right, bottom]
+            decoded_dists_grid = dfl_decoder.decode(matched_pred_dfl_dist_clamped)  # (M, 4) [left, top, right, bottom]
             
             # Convert grid distances to pixel distances using actual stride per anchor
             # matched_assigned_strides: (M,) stride value for each anchor

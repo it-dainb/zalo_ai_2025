@@ -131,8 +131,10 @@ class StandardDetectionHead(nn.Module):
         cls_preds = []
         
         for i in range(self.nl):
-            # Box regression
-            box_preds.append(self.cv2[i](x[i]))
+            # Box regression with clamping to prevent DFL explosion
+            box_pred = self.cv2[i](x[i])
+            box_pred = torch.clamp(box_pred, min=-10.0, max=10.0)
+            box_preds.append(box_pred)
             # Classification
             cls_preds.append(self.cv3[i](x[i]))
         
@@ -218,8 +220,8 @@ class PrototypeDetectionHead(nn.Module):
     
     def _register_gradient_hooks(self):
         """
-        Register gradient clipping hooks on feature_proj layers.
-        This prevents gradient explosion in cls_loss backward pass.
+        Register gradient clipping hooks on feature_proj and cv2 layers.
+        This prevents gradient explosion in cls_loss and bbox_loss backward pass.
         """
         def gradient_clip_hook(grad):
             """Clamp gradients to [-10, 10] range."""
@@ -229,6 +231,16 @@ class PrototypeDetectionHead(nn.Module):
         
         # Register hooks on all Conv2d and BatchNorm2d layers in feature_proj
         for i, module in enumerate(self.feature_proj):
+            for m in module.modules():
+                if isinstance(m, (nn.Conv2d, nn.BatchNorm2d)):
+                    if hasattr(m, 'weight') and m.weight is not None:
+                        m.weight.register_hook(gradient_clip_hook)
+                    if hasattr(m, 'bias') and m.bias is not None:
+                        m.bias.register_hook(gradient_clip_hook)
+        
+        # CRITICAL: Also register hooks on cv2 box regression layers
+        # These are prone to gradient explosion from WIoU and DFL losses
+        for i, module in enumerate(self.cv2):
             for m in module.modules():
                 if isinstance(m, (nn.Conv2d, nn.BatchNorm2d)):
                     if hasattr(m, 'weight') and m.weight is not None:
@@ -338,8 +350,10 @@ class PrototypeDetectionHead(nn.Module):
                 # No prototypes for this scale, return zeros
                 sim_scores.append(torch.zeros_like(feat_proj[:, :1]))
             
-            # Box regression (shared with features)
-            box_preds.append(self.cv2[i](x[i]))
+            # Box regression (shared with features) with clamping to prevent DFL explosion
+            box_pred = self.cv2[i](x[i])
+            box_pred = torch.clamp(box_pred, min=-10.0, max=10.0)
+            box_preds.append(box_pred)
         
         return box_preds, sim_scores
 

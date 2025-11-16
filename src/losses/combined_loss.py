@@ -49,7 +49,7 @@ class ReferenceBasedDetectionLoss(nn.Module):
         stage=1,
         bbox_weight=7.5,
         cls_weight=0.5,
-        dfl_weight=1.5,
+        dfl_weight=0.5,  # REDUCED from 1.5 to 0.5 to prevent DFL loss domination
         supcon_weight=1.0,
         cpe_weight=0.5,
         triplet_weight=0.2,
@@ -270,7 +270,7 @@ class ReferenceBasedDetectionLoss(nn.Module):
         
         return losses
     
-    def set_stage(self, stage, bbox_weight=7.5, cls_weight=0.5, dfl_weight=1.5, 
+    def set_stage(self, stage, bbox_weight=7.5, cls_weight=0.5, dfl_weight=0.5,  # REDUCED from 1.5
                   supcon_weight=1.0, cpe_weight=0.5, triplet_weight=0.2):
         """Update training stage and corresponding weights"""
         self.stage = stage

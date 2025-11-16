@@ -602,6 +602,9 @@ class RefDetTrainer:
                 
                 if has_nan_grad:
                     self._log_batch_info(batch_to_use, batch_idx)
+                    print(f"Loss components:")
+                    for key, val in losses_dict.items():
+                        print(f"  {key}: {val}")
                     self.logger.error(f"❌ NaN/Inf gradients detected at batch {batch_idx}. Skipping optimizer step.")
                     self.optimizer.zero_grad()
                     

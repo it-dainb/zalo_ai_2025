@@ -372,7 +372,14 @@ class YOLOv8nRefDet(nn.Module):
                 'p5': support_features_for_head['p5'],
             }
         
-        detections = self.detection_head(fused_features, prototypes, mode=mode)
+        # CRITICAL: Clamp fused features before detection head to prevent gradient explosion
+        # This prevents extreme values from propagating into detection head and causing NaN gradients
+        fused_features_clamped = {
+            scale: torch.clamp(feat, min=-10.0, max=10.0)
+            for scale, feat in fused_features.items()
+        }
+        
+        detections = self.detection_head(fused_features_clamped, prototypes, mode=mode)
         
         # Add fused features to outputs for CPE loss (ROI feature extraction)
         detections['fused_features'] = fused_features

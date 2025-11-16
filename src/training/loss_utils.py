@@ -128,12 +128,14 @@ def assign_targets_to_anchors(
                 
                 # Add small epsilon to r,b to ensure x2 > x1 and y2 > y1 even when predictions are 0
                 # This handles the case where ReLU outputs zeros in early training
-                eps = 1e-6
+                # CRITICAL: epsilon must be added AFTER stride multiplication to ensure numerical stability
+                # Using 1e-4 instead of 1e-6 to account for float32 precision limits (spacing at 320.0 is ~3e-5)
+                eps = 1e-4
                 assigned_box_preds_decoded = torch.stack([
                     assigned_anchor_x - assigned_box_preds[:, 0] * stride,  # x1 (left)
                     assigned_anchor_y - assigned_box_preds[:, 1] * stride,  # y1 (top)
-                    assigned_anchor_x + (assigned_box_preds[:, 2] + eps) * stride,  # x2 (right) + eps
-                    assigned_anchor_y + (assigned_box_preds[:, 3] + eps) * stride,  # y2 (bottom) + eps
+                    assigned_anchor_x + assigned_box_preds[:, 2] * stride + eps,  # x2 (right) + eps AFTER stride
+                    assigned_anchor_y + assigned_box_preds[:, 3] * stride + eps,  # y2 (bottom) + eps AFTER stride
                 ], dim=1)  # (N_assigned, 4)
                 
                 assigned_box_preds = assigned_box_preds_decoded

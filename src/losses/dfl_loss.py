@@ -51,16 +51,27 @@ class DFLoss(nn.Module):
         Returns:
             torch.Tensor: DFL loss value
         """
+        # Early NaN/Inf check
+        if torch.isnan(pred_dist).any() or torch.isinf(pred_dist).any():
+            print(f"❌ DFLoss: Input pred_dist contains NaN/Inf!")
+            return torch.tensor(0.0, device=pred_dist.device, requires_grad=True)
+        
+        if torch.isnan(target).any() or torch.isinf(target).any():
+            print(f"❌ DFLoss: Input target contains NaN/Inf!")
+            return torch.tensor(0.0, device=pred_dist.device, requires_grad=True)
+        
         # Reshape pred_dist to [N, 4, reg_max]
         batch_size = pred_dist.shape[0]
         pred_dist = pred_dist.reshape(batch_size, 4, self.reg_max)
         
-        # CRITICAL: Clamp pred_dist BEFORE softmax to prevent gradient explosion
-        # Softmax gradient can explode even with moderate inputs, causing NaN backprop
-        pred_dist = torch.clamp(pred_dist, min=-10.0, max=10.0)
+        # CRITICAL: Aggressive clamping BEFORE softmax to prevent gradient explosion
+        # With AMP, even clamped values can cause gradient issues, so we use tighter bounds
+        # Reduced from [-10, 10] to [-8, 8] for better AMP stability
+        pred_dist = torch.clamp(pred_dist, min=-8.0, max=8.0)
         
-        # Clamp targets to valid range
-        target = torch.clamp(target, min=0, max=self.reg_max - 1e-6)
+        # Clamp targets to valid range [0, reg_max-1)
+        # Using 1e-4 instead of 1e-6 for better numerical stability
+        target = torch.clamp(target, min=0.0, max=self.reg_max - 1e-4)
         
         # Get integer bins surrounding target
         target_left = target.long()  # Floor
@@ -77,7 +88,16 @@ class DFLoss(nn.Module):
             dist = pred_dist[:, i, :]  # [N, reg_max]
             
             # Apply softmax to get probabilities
-            dist = F.softmax(dist, dim=-1)
+            # Use float32 for softmax to prevent AMP precision issues
+            original_dtype = dist.dtype
+            dist_f32 = dist.float()
+            dist_f32 = F.softmax(dist_f32, dim=-1)
+            dist = dist_f32.to(original_dtype)
+            
+            # Check for NaN after softmax (can happen with extreme values even after clamping)
+            if torch.isnan(dist).any():
+                print(f"❌ DFLoss: NaN in softmax output for coordinate {i}!")
+                return torch.tensor(0.0, device=pred_dist.device, requires_grad=True)
             
             # Get probabilities for target bins
             target_l = target_left[:, i]
@@ -87,26 +107,43 @@ class DFLoss(nn.Module):
             prob_left = dist[torch.arange(batch_size), target_l]
             prob_right = dist[torch.arange(batch_size), target_r]
             
-            # Clamp probabilities to prevent log explosion (was 1e-7, now 1e-6)
-            prob_left = torch.clamp(prob_left, min=1e-6, max=1.0)
-            prob_right = torch.clamp(prob_right, min=1e-6, max=1.0)
+            # Clamp probabilities to prevent log(0) - use larger epsilon for AMP stability
+            # Increased from 1e-6 to 1e-5 for better mixed precision stability
+            prob_left = torch.clamp(prob_left, min=1e-5, max=1.0)
+            prob_right = torch.clamp(prob_right, min=1e-5, max=1.0)
             
             # DFL loss: negative log-likelihood weighted by distance to bins
             loss_left = -torch.log(prob_left) * weight_left[:, i]
             loss_right = -torch.log(prob_right) * weight_right[:, i]
             
+            # Check for NaN in loss components
+            if torch.isnan(loss_left).any() or torch.isnan(loss_right).any():
+                print(f"❌ DFLoss: NaN in loss computation for coordinate {i}!")
+                print(f"  prob_left range: [{prob_left.min():.6f}, {prob_left.max():.6f}]")
+                print(f"  prob_right range: [{prob_right.min():.6f}, {prob_right.max():.6f}]")
+                return torch.tensor(0.0, device=pred_dist.device, requires_grad=True)
+            
             # Clamp individual losses to prevent outliers
-            loss_left = torch.clamp(loss_left, max=20.0)
-            loss_right = torch.clamp(loss_right, max=20.0)
+            # Reduced from 20.0 to 15.0 to prevent gradient explosion
+            loss_left = torch.clamp(loss_left, max=15.0)
+            loss_right = torch.clamp(loss_right, max=15.0)
             
             loss += loss_left + loss_right
         
         # Return mean loss with aggressive clamping to prevent gradient explosion
-        # Individual losses already clamped at 20.0, but we need to clamp mean too
+        # Individual losses already clamped at 15.0, but we need to clamp mean too
         # to prevent mixed precision scaling from amplifying gradients
         loss_mean = loss.mean()
-        # Clamp at 15.0 to allow learning from random init (~11.08) but prevent explosion
-        loss_mean = torch.clamp(loss_mean, max=15.0)
+        
+        # Final NaN check before returning
+        if torch.isnan(loss_mean) or torch.isinf(loss_mean):
+            print(f"❌ DFLoss: Final loss is NaN/Inf!")
+            return torch.tensor(0.0, device=pred_dist.device, requires_grad=True)
+        
+        # Clamp at 12.0 (reduced from 15.0) for better AMP stability
+        # This still allows learning from random init (~11.08) but prevents gradient explosion
+        loss_mean = torch.clamp(loss_mean, max=12.0)
+        
         return loss_mean
     
     def decode(self, pred_dist):
@@ -123,10 +160,14 @@ class DFLoss(nn.Module):
         pred_dist = pred_dist.reshape(batch_size, 4, self.reg_max)
         
         # CRITICAL: Clamp pred_dist BEFORE softmax to prevent gradient explosion
-        pred_dist = torch.clamp(pred_dist, min=-10.0, max=10.0)
+        # Match forward pass clamping: [-8, 8] for AMP stability
+        pred_dist = torch.clamp(pred_dist, min=-8.0, max=8.0)
         
-        # Apply softmax
+        # Apply softmax in float32 for stability
+        original_dtype = pred_dist.dtype
+        pred_dist = pred_dist.float()
         pred_dist = F.softmax(pred_dist, dim=-1)
+        pred_dist = pred_dist.to(original_dtype)
         
         # Expected value: sum of bin_index * probability
         bins = torch.arange(self.reg_max, dtype=torch.float32, device=pred_dist.device)

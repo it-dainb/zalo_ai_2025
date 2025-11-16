@@ -191,7 +191,39 @@ class ReferenceBasedDetectionLoss(nn.Module):
         
         # 3. Distribution Focal Loss
         if pred_dfl_dist.numel() > 0 and target_dfl.numel() > 0:
-            losses['dfl_loss'] = self.dfl_loss(pred_dfl_dist, target_dfl)
+            # CRITICAL: Additional safeguards for DFL loss to prevent NaN gradients with AMP
+            # Clamp pred_dfl_dist BEFORE passing to loss function
+            pred_dfl_dist_safe = torch.clamp(pred_dfl_dist, min=-15.0, max=15.0)
+            
+            # Validate target_dfl is in valid range [0, reg_max-1]
+            if self.debug_mode:
+                target_min = target_dfl.min().item()
+                target_max = target_dfl.max().item()
+                if target_min < 0 or target_max >= self.dfl_loss.reg_max:
+                    print(f"⚠️  WARNING: target_dfl out of range: [{target_min:.4f}, {target_max:.4f}], reg_max={self.dfl_loss.reg_max}")
+            
+            # Clamp target_dfl to safe range
+            target_dfl_safe = torch.clamp(target_dfl, min=0.0, max=self.dfl_loss.reg_max - 0.01)
+            
+            # Check for NaN/Inf before computing loss
+            if torch.isnan(pred_dfl_dist_safe).any() or torch.isnan(target_dfl_safe).any():
+                print(f"❌ ERROR: NaN detected in DFL inputs!")
+                print(f"  pred_dfl_dist has NaN: {torch.isnan(pred_dfl_dist_safe).any()}")
+                print(f"  target_dfl has NaN: {torch.isnan(target_dfl_safe).any()}")
+                losses['dfl_loss'] = torch.tensor(0.0, device=pred_dfl_dist.device, requires_grad=True)
+            elif torch.isinf(pred_dfl_dist_safe).any() or torch.isinf(target_dfl_safe).any():
+                print(f"❌ ERROR: Inf detected in DFL inputs!")
+                losses['dfl_loss'] = torch.tensor(0.0, device=pred_dfl_dist.device, requires_grad=True)
+            else:
+                # Compute DFL loss with safeguarded inputs
+                dfl_loss_value = self.dfl_loss(pred_dfl_dist_safe, target_dfl_safe)
+                
+                # Check if loss is NaN/Inf before using it
+                if torch.isnan(dfl_loss_value).any() or torch.isinf(dfl_loss_value).any():
+                    print(f"❌ ERROR: DFL loss is NaN/Inf: {dfl_loss_value.item()}")
+                    losses['dfl_loss'] = torch.tensor(0.0, device=pred_dfl_dist.device, requires_grad=True)
+                else:
+                    losses['dfl_loss'] = dfl_loss_value
         else:
             losses['dfl_loss'] = torch.tensor(0.0, device=pred_dfl_dist.device, requires_grad=True)
         

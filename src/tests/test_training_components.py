@@ -23,7 +23,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from losses.combined_loss import ReferenceBasedDetectionLoss
 from losses.wiou_loss import WIoULoss
 from losses.bce_loss import BCEClassificationLoss
-from losses.dfl_loss import DFLoss
 from losses.supervised_contrastive_loss import SupervisedContrastiveLoss
 from losses.triplet_loss import TripletLoss
 from training.trainer import RefDetTrainer
@@ -68,21 +67,7 @@ class TestLossComponents:
         
         print(f"✅ BCE loss: {loss.item():.4f}")
     
-    def test_dfl_loss(self, device):
-        """Test DFL loss"""
-        loss_fn = DFLoss(reg_max=16).to(device)
-        
-        # Create dummy predictions and targets
-        pred_dist = torch.randn(10, 16 * 4).to(device)  # 17 = reg_max
-        target_boxes = torch.randn(10, 4).to(device)
-        
-        try:
-            loss = loss_fn(pred_dist, target_boxes)
-            assert isinstance(loss, torch.Tensor)
-            print(f"✅ DFL loss: {loss.item():.4f}")
-        except Exception as e:
-            print(f"⚠️  DFL loss test: {str(e)}")
-    
+
     def test_supervised_contrastive_loss(self, device):
         """Test supervised contrastive loss"""
         loss_fn = SupervisedContrastiveLoss(temperature=0.07).to(device)
@@ -129,7 +114,6 @@ class TestCombinedLoss:
             stage=2,
             bbox_weight=7.5,
             cls_weight=0.5,
-            dfl_weight=1.5,
             supcon_weight=1.0,
             cpe_weight=0.5,
             triplet_weight=0.2,
@@ -140,7 +124,6 @@ class TestCombinedLoss:
         assert loss_fn is not None
         assert hasattr(loss_fn, 'bbox_loss')
         assert hasattr(loss_fn, 'cls_loss')
-        assert hasattr(loss_fn, 'dfl_loss')
         print(f"✅ Combined loss initialized")
     
     def test_combined_loss_stage2(self, loss_fn, device):
@@ -404,7 +387,7 @@ class TestTrainingStep:
         
         model = torch.nn.Linear(10, 10).to(device)
         optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4)
-        scaler = torch.amp.GradScaler()
+        scaler = torch.cuda.amp.GradScaler()
         loss_fn = torch.nn.MSELoss()
         
         # Mixed precision training step
@@ -414,7 +397,7 @@ class TestTrainingStep:
         x = torch.randn(4, 10).to(device)
         y = torch.randn(4, 10).to(device)
         
-        with torch.amp.autocast(device_type='cuda'):
+        with torch.cuda.amp.autocast():
             pred = model(x)
             loss = loss_fn(pred, y)
         

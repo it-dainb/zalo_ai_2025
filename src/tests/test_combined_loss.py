@@ -17,7 +17,6 @@ class TestCombinedLoss:
         
         assert loss_fn.weights['bbox'] == 7.5
         assert loss_fn.weights['cls'] == 0.5
-        assert loss_fn.weights['dfl'] == 1.5
         assert loss_fn.weights['supcon'] == 0.0  # No contrastive in stage 1
         assert loss_fn.weights['cpe'] == 0.0
     
@@ -27,7 +26,6 @@ class TestCombinedLoss:
         
         assert loss_fn.weights['bbox'] == 7.5
         assert loss_fn.weights['cls'] == 0.5
-        assert loss_fn.weights['dfl'] == 1.5
         assert loss_fn.weights['supcon'] == 1.0  # Full contrastive
         assert loss_fn.weights['cpe'] == 0.5
     
@@ -37,7 +35,6 @@ class TestCombinedLoss:
         
         assert loss_fn.weights['bbox'] == 7.5
         assert loss_fn.weights['cls'] == 0.5
-        assert loss_fn.weights['dfl'] == 1.5
         assert loss_fn.weights['supcon'] == 0.5  # Reduced to 0.5
         assert loss_fn.weights['cpe'] == 0.3  # Reduced to 0.3
         assert loss_fn.weights['triplet'] == 0.2  # Added in stage 3
@@ -48,35 +45,29 @@ class TestCombinedLoss:
         
         batch_size = 8
         num_classes = 10
-        reg_max = 16
         
         # Create dummy predictions
         pred_bboxes = torch.rand(batch_size, 4) * 100
         pred_bboxes[:, 2:] = pred_bboxes[:, :2] + torch.rand(batch_size, 2) * 50
         pred_cls_logits = torch.randn(batch_size, num_classes)
-        pred_dfl_dist = torch.randn(batch_size, 4 * reg_max)
         
         # Create dummy targets
         target_bboxes = torch.rand(batch_size, 4) * 100
         target_bboxes[:, 2:] = target_bboxes[:, :2] + torch.rand(batch_size, 2) * 50
         target_cls = torch.randint(0, 2, (batch_size, num_classes)).float()
-        target_dfl = torch.rand(batch_size, 4) * 15
         
         # Forward pass
         losses = loss_fn(
             pred_bboxes=pred_bboxes,
             pred_cls_logits=pred_cls_logits,
-            pred_dfl_dist=pred_dfl_dist,
             target_bboxes=target_bboxes,
-            target_cls=target_cls,
-            target_dfl=target_dfl
+            target_cls=target_cls
         )
         
         # Check outputs
         assert 'total_loss' in losses
         assert 'bbox_loss' in losses
         assert 'cls_loss' in losses
-        assert 'dfl_loss' in losses
         assert 'supcon_loss' in losses
         assert 'cpe_loss' in losses
         
@@ -96,17 +87,14 @@ class TestCombinedLoss:
         num_classes = 10
         num_prototypes = 5
         feature_dim = 256
-        reg_max = 16
         
         # Detection predictions/targets
         pred_bboxes = torch.rand(batch_size, 4) * 100
         pred_bboxes[:, 2:] = pred_bboxes[:, :2] + torch.rand(batch_size, 2) * 50
         pred_cls_logits = torch.randn(batch_size, num_classes)
-        pred_dfl_dist = torch.randn(batch_size, 4 * reg_max)
         target_bboxes = torch.rand(batch_size, 4) * 100
         target_bboxes[:, 2:] = target_bboxes[:, :2] + torch.rand(batch_size, 2) * 50
         target_cls = torch.randint(0, 2, (batch_size, num_classes)).float()
-        target_dfl = torch.rand(batch_size, 4) * 15
         
         # Contrastive learning inputs
         query_features = torch.randn(batch_size, feature_dim)
@@ -119,10 +107,8 @@ class TestCombinedLoss:
         losses = loss_fn(
             pred_bboxes=pred_bboxes,
             pred_cls_logits=pred_cls_logits,
-            pred_dfl_dist=pred_dfl_dist,
             target_bboxes=target_bboxes,
             target_cls=target_cls,
-            target_dfl=target_dfl,
             query_features=query_features,
             support_prototypes=support_prototypes,
             feature_labels=feature_labels,
@@ -157,29 +143,24 @@ class TestCombinedLoss:
         num_classes = 5
         num_prototypes = 3
         feature_dim = 128
-        reg_max = 16
         
         # Create model parameters to simulate network output
         bbox_params = torch.nn.Parameter(torch.rand(batch_size, 4) * 100)
         cls_params = torch.nn.Parameter(torch.randn(batch_size, num_classes))
-        dfl_params = torch.nn.Parameter(torch.randn(batch_size, 4 * reg_max))
         query_params = torch.nn.Parameter(torch.randn(batch_size, feature_dim))
         proto_params = torch.nn.Parameter(torch.randn(num_prototypes, feature_dim))
         
         # Create targets
         target_bboxes = torch.rand(batch_size, 4) * 100
         target_cls = torch.randint(0, 2, (batch_size, num_classes)).float()
-        target_dfl = torch.rand(batch_size, 4) * 15
         feature_labels = torch.randint(0, num_prototypes, (batch_size,))
         
         # Forward and backward
         losses = loss_fn(
             pred_bboxes=bbox_params,
             pred_cls_logits=cls_params,
-            pred_dfl_dist=dfl_params,
             target_bboxes=target_bboxes,
             target_cls=target_cls,
-            target_dfl=target_dfl,
             query_features=query_params,
             support_prototypes=proto_params,
             feature_labels=feature_labels
@@ -190,7 +171,6 @@ class TestCombinedLoss:
         # Check gradients exist and are valid
         assert bbox_params.grad is not None
         assert cls_params.grad is not None
-        assert dfl_params.grad is not None
         assert query_params.grad is not None
         assert proto_params.grad is not None
         
@@ -204,25 +184,20 @@ class TestCombinedLoss:
         # Empty predictions/targets
         pred_bboxes = torch.empty(0, 4)
         pred_cls_logits = torch.empty(0, 10)
-        pred_dfl_dist = torch.empty(0, 4 * 17)
         target_bboxes = torch.empty(0, 4)
         target_cls = torch.empty(0, 10)
-        target_dfl = torch.empty(0, 4)
         
         # Should not crash
         losses = loss_fn(
             pred_bboxes=pred_bboxes,
             pred_cls_logits=pred_cls_logits,
-            pred_dfl_dist=pred_dfl_dist,
             target_bboxes=target_bboxes,
-            target_cls=target_cls,
-            target_dfl=target_dfl
+            target_cls=target_cls
         )
         
         # Losses should be zero
         assert losses['bbox_loss'].item() == 0.0
         assert losses['cls_loss'].item() == 0.0
-        assert losses['dfl_loss'].item() == 0.0
     
     def test_loss_weighting_contribution(self):
         """Test individual loss components contribute proportionally"""
@@ -230,31 +205,25 @@ class TestCombinedLoss:
         
         batch_size = 8
         num_classes = 10
-        reg_max = 16
         
         pred_bboxes = torch.rand(batch_size, 4) * 100
         pred_bboxes[:, 2:] = pred_bboxes[:, :2] + torch.rand(batch_size, 2) * 50
         pred_cls_logits = torch.randn(batch_size, num_classes)
-        pred_dfl_dist = torch.randn(batch_size, 4 * reg_max)
         target_bboxes = torch.rand(batch_size, 4) * 100
         target_bboxes[:, 2:] = target_bboxes[:, :2] + torch.rand(batch_size, 2) * 50
         target_cls = torch.randint(0, 2, (batch_size, num_classes)).float()
-        target_dfl = torch.rand(batch_size, 4) * 15
         
         losses = loss_fn(
             pred_bboxes=pred_bboxes,
             pred_cls_logits=pred_cls_logits,
-            pred_dfl_dist=pred_dfl_dist,
             target_bboxes=target_bboxes,
-            target_cls=target_cls,
-            target_dfl=target_dfl
+            target_cls=target_cls
         )
         
         # Manually compute expected total
         expected_total = (
             7.5 * losses['bbox_loss'] +
-            0.5 * losses['cls_loss'] +
-            1.5 * losses['dfl_loss']
+            0.5 * losses['cls_loss']
         )
         
         assert torch.allclose(
@@ -269,14 +238,12 @@ class TestCombinedLoss:
             stage=2,
             bbox_weight=10.0,
             cls_weight=1.0,
-            dfl_weight=2.0,
             supcon_weight=0.5,
             cpe_weight=0.25
         )
         
         assert loss_fn.weights['bbox'] == 10.0
         assert loss_fn.weights['cls'] == 1.0
-        assert loss_fn.weights['dfl'] == 2.0
         assert loss_fn.weights['supcon'] == 0.5
         assert loss_fn.weights['cpe'] == 0.25
 
@@ -294,19 +261,15 @@ class TestLossIntegration:
             batch_size = 4
             pred_bboxes = torch.rand(batch_size, 4, requires_grad=True) * 100
             pred_cls_logits = torch.randn(batch_size, 10, requires_grad=True)
-            pred_dfl_dist = torch.randn(batch_size, 4 * 17, requires_grad=True)
             target_bboxes = torch.rand(batch_size, 4) * 100
             target_cls = torch.randint(0, 2, (batch_size, 10)).float()
-            target_dfl = torch.rand(batch_size, 4) * 15
             
             # Forward
             losses = loss_fn(
                 pred_bboxes=pred_bboxes,
                 pred_cls_logits=pred_cls_logits,
-                pred_dfl_dist=pred_dfl_dist,
                 target_bboxes=target_bboxes,
-                target_cls=target_cls,
-                target_dfl=target_dfl
+                target_cls=target_cls
             )
             
             # Should not crash
@@ -322,25 +285,25 @@ class TestLossIntegration:
         for _ in range(2):
             pred_bboxes = torch.rand(batch_size, 4) * 100
             pred_cls_logits = torch.randn(batch_size, 10)
-            pred_dfl_dist = torch.randn(batch_size, 4 * 17)
             target_bboxes = torch.rand(batch_size, 4) * 100
             target_cls = torch.randint(0, 2, (batch_size, 10)).float()
-            target_dfl = torch.rand(batch_size, 4) * 15
             
             losses = loss_fn(
                 pred_bboxes=pred_bboxes,
                 pred_cls_logits=pred_cls_logits,
-                pred_dfl_dist=pred_dfl_dist,
                 target_bboxes=target_bboxes,
-                target_cls=target_cls,
-                target_dfl=target_dfl
+                target_cls=target_cls
             )
             assert losses['supcon_loss'].item() == 0.0
         
         # Transition to Stage 2
         loss_fn.set_stage(2)
         
-        # Stage 2: Few-shot meta-learning
+        # Stage 2: Few-shot meta-learning - create new test data
+        pred_bboxes = torch.rand(batch_size, 4) * 100
+        pred_cls_logits = torch.randn(batch_size, 10)
+        target_bboxes = torch.rand(batch_size, 4) * 100
+        target_cls = torch.randint(0, 2, (batch_size, 10)).float()
         query_features = torch.randn(batch_size, 256)
         support_prototypes = torch.randn(5, 256)
         feature_labels = torch.randint(0, 5, (batch_size,))
@@ -348,10 +311,8 @@ class TestLossIntegration:
         losses = loss_fn(
             pred_bboxes=pred_bboxes,
             pred_cls_logits=pred_cls_logits,
-            pred_dfl_dist=pred_dfl_dist,
             target_bboxes=target_bboxes,
             target_cls=target_cls,
-            target_dfl=target_dfl,
             query_features=query_features,
             support_prototypes=support_prototypes,
             feature_labels=feature_labels
@@ -368,19 +329,16 @@ class TestTripletLossIntegration:
         
         batch_size = 12
         num_classes = 10
-        reg_max = 16
         feature_dim = 256
         
         # Detection predictions
         pred_bboxes = torch.rand(batch_size, 4)
         pred_cls_logits = torch.randn(batch_size, num_classes)
-        pred_dfl_dist = torch.softmax(torch.randn(batch_size, 4 * reg_max), dim=-1)  # 4 coords * (reg_max) bins
         
         # Targets
         target_bboxes = torch.rand(batch_size, 4)
         target_cls_indices = torch.randint(0, num_classes, (batch_size,))
         target_cls = torch.zeros(batch_size, num_classes).scatter_(1, target_cls_indices.unsqueeze(1), 1.0)  # One-hot
-        target_dfl = torch.rand(batch_size, 4) * reg_max  # Coordinates in [0, reg_max]
         
         # Contrastive features
         query_features = torch.randn(batch_size, feature_dim)
@@ -394,10 +352,8 @@ class TestTripletLossIntegration:
         losses = loss_fn(
             pred_bboxes=pred_bboxes,
             pred_cls_logits=pred_cls_logits,
-            pred_dfl_dist=pred_dfl_dist,
             target_bboxes=target_bboxes,
             target_cls=target_cls,
-            target_dfl=target_dfl,
             query_features=query_features,
             support_prototypes=support_prototypes,
             feature_labels=feature_labels,
@@ -408,7 +364,6 @@ class TestTripletLossIntegration:
         # Verify all components computed
         assert 'bbox_loss' in losses
         assert 'cls_loss' in losses
-        assert 'dfl_loss' in losses
         assert 'supcon_loss' in losses
         assert 'cpe_loss' in losses
         assert 'triplet_loss' in losses
@@ -426,19 +381,16 @@ class TestTripletLossIntegration:
         
         batch_size = 8
         num_classes = 10
-        reg_max = 16
         feature_dim = 256
         
         # Detection predictions
         pred_bboxes = torch.rand(batch_size, 4)
         pred_cls_logits = torch.randn(batch_size, num_classes)
-        pred_dfl_dist = torch.softmax(torch.randn(batch_size, 4 * reg_max), dim=-1)  # 4 coords * (reg_max) bins
         
         # Targets
         target_bboxes = torch.rand(batch_size, 4)
         target_cls_indices = torch.randint(0, num_classes, (batch_size,))
         target_cls = torch.zeros(batch_size, num_classes).scatter_(1, target_cls_indices.unsqueeze(1), 1.0)  # One-hot
-        target_dfl = torch.rand(batch_size, 4) * reg_max  # Coordinates in [0, reg_max]
         
         # Contrastive features
         query_features = torch.randn(batch_size, feature_dim)
@@ -453,10 +405,8 @@ class TestTripletLossIntegration:
         losses = loss_fn(
             pred_bboxes=pred_bboxes,
             pred_cls_logits=pred_cls_logits,
-            pred_dfl_dist=pred_dfl_dist,
             target_bboxes=target_bboxes,
             target_cls=target_cls,
-            target_dfl=target_dfl,
             query_features=query_features,
             support_prototypes=support_prototypes,
             feature_labels=feature_labels,
@@ -475,19 +425,16 @@ class TestTripletLossIntegration:
         
         batch_size = 8
         num_classes = 5
-        reg_max = 16
         feature_dim = 128
         
         # Detection predictions (with gradients)
         pred_bboxes = torch.rand(batch_size, 4, requires_grad=True)
         pred_cls_logits = torch.randn(batch_size, num_classes, requires_grad=True)
-        pred_dfl_dist = torch.softmax(torch.randn(batch_size, 4 * reg_max, requires_grad=True), dim=-1)
         
         # Targets
         target_bboxes = torch.rand(batch_size, 4)
         target_cls_indices = torch.randint(0, num_classes, (batch_size,))
         target_cls = torch.zeros(batch_size, num_classes).scatter_(1, target_cls_indices.unsqueeze(1), 1.0)  # One-hot
-        target_dfl = torch.rand(batch_size, 4) * reg_max  # Coordinates in [0, reg_max]
         
         # Contrastive features (with gradients)
         query_features = torch.randn(batch_size, feature_dim, requires_grad=True)
@@ -501,10 +448,8 @@ class TestTripletLossIntegration:
         losses = loss_fn(
             pred_bboxes=pred_bboxes,
             pred_cls_logits=pred_cls_logits,
-            pred_dfl_dist=pred_dfl_dist,
             target_bboxes=target_bboxes,
             target_cls=target_cls,
-            target_dfl=target_dfl,
             query_features=query_features,
             support_prototypes=support_prototypes,
             feature_labels=feature_labels,
@@ -534,18 +479,15 @@ class TestTripletLossIntegration:
         
         batch_size = 8
         num_classes = 10
-        reg_max = 16
         feature_dim = 256
         
         # Only detection + contrastive (no triplet inputs)
         pred_bboxes = torch.rand(batch_size, 4)
         pred_cls_logits = torch.randn(batch_size, num_classes)
-        pred_dfl_dist = torch.softmax(torch.randn(batch_size, 4 * reg_max), dim=-1)  # 4 coords * (reg_max) bins
         
         target_bboxes = torch.rand(batch_size, 4)
         target_cls_indices = torch.randint(0, num_classes, (batch_size,))
         target_cls = torch.zeros(batch_size, num_classes).scatter_(1, target_cls_indices.unsqueeze(1), 1.0)  # One-hot
-        target_dfl = torch.rand(batch_size, 4) * reg_max  # Coordinates in [0, reg_max]
         
         query_features = torch.randn(batch_size, feature_dim)
         support_prototypes = torch.randn(num_classes, feature_dim)
@@ -554,10 +496,8 @@ class TestTripletLossIntegration:
         losses = loss_fn(
             pred_bboxes=pred_bboxes,
             pred_cls_logits=pred_cls_logits,
-            pred_dfl_dist=pred_dfl_dist,
             target_bboxes=target_bboxes,
             target_cls=target_cls,
-            target_dfl=target_dfl,
             query_features=query_features,
             support_prototypes=support_prototypes,
             feature_labels=feature_labels
@@ -576,11 +516,11 @@ class TestTripletLossIntegration:
         loss_fn.set_stage(1)
         assert loss_fn.weights['triplet'] == 0.0
         
-        # Stage 2: No triplet
+        # Stage 2: Triplet enabled (default 0.2)
         loss_fn.set_stage(2)
-        assert loss_fn.weights['triplet'] == 0.0
+        assert loss_fn.weights['triplet'] == 0.2
         
-        # Stage 3: Triplet enabled
+        # Stage 3: Triplet enabled (default 0.2)
         loss_fn.set_stage(3)
         assert loss_fn.weights['triplet'] == 0.2
         

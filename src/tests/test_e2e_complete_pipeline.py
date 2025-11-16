@@ -171,7 +171,6 @@ class TestCompleteE2EPipeline:
             stage=2,
             bbox_weight=7.5,
             cls_weight=0.5,
-            dfl_weight=1.5,
             supcon_weight=1.0,
             cpe_weight=0.5,
         ).to(device)

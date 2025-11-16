@@ -184,18 +184,14 @@ def test_loss():
         # Test with dummy inputs
         pred_bboxes = torch.randn(5, 4)
         pred_cls_logits = torch.randn(5, 2)
-        pred_dfl_dist = torch.randn(5, 68)  # 4 * (16+1)
         target_bboxes = torch.randn(5, 4)
         target_cls = torch.randn(5, 2)
-        target_dfl = torch.randint(0, 16, (5, 4))
         
         losses = loss_fn(
             pred_bboxes=pred_bboxes,
             pred_cls_logits=pred_cls_logits,
-            pred_dfl_dist=pred_dfl_dist,
             target_bboxes=target_bboxes,
             target_cls=target_cls,
-            target_dfl=target_dfl,
         )
         
         print(f"✓ Loss computed successfully")

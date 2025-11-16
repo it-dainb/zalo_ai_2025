@@ -26,8 +26,7 @@ from models.dual_head import (
     DualDetectionHead,
     StandardDetectionHead,
     PrototypeDetectionHead,
-    Conv,
-    DFL
+    Conv
 )
 
 
@@ -299,18 +298,7 @@ class TestDualHead:
         
         print("✅ Conv module verified")
     
-    def test_dfl_module(self, device):
-        """Test Distribution Focal Loss module"""
-        dfl = DFL(c1=16).to(device)
-        x = torch.randn(2, 64, 100).to(device)  # (batch, 4*reg_max, anchors)
-        
-        with torch.no_grad():
-            out = dfl(x)
-        
-        assert out.shape == (2, 4, 100)  # (batch, 4_coords, anchors)
-        
-        print("✅ DFL module verified")
-    
+
     def test_gradient_flow(self, dual_head, device, mock_features, mock_prototypes):
         """Test gradients flow through both heads"""
         dual_head.train()
@@ -322,9 +310,13 @@ class TestDualHead:
         outputs = dual_head(mock_features, mock_prototypes, mode='dual')
         
         # Compute dummy loss
-        loss = sum(b.sum() for b in outputs['standard_boxes'])
-        loss += sum(c.sum() for c in outputs['standard_cls'])
-        loss += sum(s.sum() for s in outputs['prototype_sim'])
+        loss = torch.zeros(1, device=device)
+        for b in outputs['standard_boxes']:
+            loss = loss + b.sum()
+        for c in outputs['standard_cls']:
+            loss = loss + c.sum()
+        for s in outputs['prototype_sim']:
+            loss = loss + s.sum()
         
         loss.backward()
         

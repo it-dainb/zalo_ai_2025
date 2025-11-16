@@ -23,7 +23,6 @@ python train.py \
     --save_interval 5 \
     --bbox_weight 7.5 \
     --cls_weight 0.5 \
-    --dfl_weight 0.75 \
     --supcon_weight 0.4 \
     --cpe_weight 0.2 \
     --triplet_weight 0.6 \

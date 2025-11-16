@@ -1,12 +1,17 @@
 """
 Unit tests for all loss components
-Tests BCE, DFL, SupCon, and CPE losses
+Tests BCE, SupCon, and CPE losses
 """
 
 import torch
 import pytest
+import sys
+from pathlib import Path
+
+# Add src directory to path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 from losses.bce_loss import BCEClassificationLoss
-from losses.dfl_loss import DFLoss
 from losses.supervised_contrastive_loss import SupervisedContrastiveLoss, PrototypeContrastiveLoss
 from losses.cpe_loss import SimplifiedCPELoss
 
@@ -55,60 +60,6 @@ class TestBCELoss:
         assert logits.grad is not None
         assert not torch.isnan(logits.grad).any()
 
-
-class TestDFLoss:
-    """Test suite for Distribution Focal Loss"""
-    
-    def setup_method(self):
-        self.loss_fn = DFLoss(reg_max=16)
-    
-    def test_output_shape(self):
-        """Test output shape is correct"""
-        batch_size = 8
-        pred_dist = torch.randn(batch_size, 4 * 16)  # 4 coords * reg_max
-        targets = torch.rand(batch_size, 4) * 15  # Values in [0, 15]
-        
-        loss = self.loss_fn(pred_dist, targets)
-        assert loss.shape == torch.Size([])
-    
-    def test_decode_distribution(self):
-        """Test decoding distribution to coordinates"""
-        batch_size = 4
-        pred_dist = torch.randn(batch_size, 4 * 16)
-        
-        decoded = self.loss_fn.decode(pred_dist)
-        assert decoded.shape == (batch_size, 4)
-        assert (decoded >= 0).all() and (decoded <= 16).all()
-    
-    def test_loss_convergence(self):
-        """Test loss decreases with better predictions"""
-        targets = torch.tensor([[5.0, 5.0, 10.0, 10.0]])
-        
-        # Bad prediction (far from target)
-        bad_pred = torch.randn(1, 4 * 16)
-        loss_bad = self.loss_fn(bad_pred, targets)
-        
-        # Good prediction (create peaked distribution at target)
-        good_pred = torch.randn(1, 4 * 16)
-        for i in range(4):
-            target_bin = int(targets[0, i].item())
-            good_pred[0, i*17 + target_bin] = 10.0  # High confidence at correct bin
-        
-        loss_good = self.loss_fn(good_pred, targets)
-        
-        # Good prediction should have lower loss
-        assert loss_good < loss_bad
-    
-    def test_gradient_flow(self):
-        """Test gradients flow properly"""
-        pred_dist = torch.randn(4, 4 * 16, requires_grad=True)
-        targets = torch.rand(4, 4) * 15
-        
-        loss = self.loss_fn(pred_dist, targets)
-        loss.backward()
-        
-        assert pred_dist.grad is not None
-        assert not torch.isnan(pred_dist.grad).any()
 
 
 class TestSupervisedContrastiveLoss:

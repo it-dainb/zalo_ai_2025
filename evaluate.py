@@ -18,6 +18,7 @@ from src.datasets.refdet_dataset import RefDetDataset, EpisodicBatchSampler
 from src.datasets.collate import RefDetCollator
 from src.models.yolov8n_refdet import YOLOv8nRefDet
 from src.augmentations.augmentation_config import AugmentationConfig
+from src.training.logging_utils import setup_logger, get_experiment_name
 
 
 def compute_iou(box1, box2):
@@ -173,15 +174,35 @@ def main():
                         help='Number of episodes to evaluate')
     parser.add_argument('--device', type=str, default='cuda' if torch.cuda.is_available() else 'cpu',
                         help='Device to evaluate on')
+    parser.add_argument('--debug', action='store_true', default=False,
+                        help='Print logs to console (default: logs only saved to file)')
+    parser.add_argument('--log_dir', type=str, default='./eval_logs',
+                        help='Directory to save evaluation logs')
     
     args = parser.parse_args()
     
-    print(f"\n{'='*60}")
-    print("YOLOv8n-RefDet Evaluation")
-    print(f"{'='*60}\n")
+    # Setup logger
+    checkpoint_name = Path(args.checkpoint).stem  # e.g., "best_model" or "checkpoint_epoch_50"
+    experiment_name = f"{checkpoint_name}_{args.n_way}way_{args.n_query}query_{args.n_episodes}episodes"
+    logger = setup_logger(
+        name='evaluation',
+        log_dir=args.log_dir,
+        stage=None,
+        debug=args.debug,
+        experiment_name=experiment_name
+    )
+    
+    logger.info("="*70)
+    logger.info("YOLOv8n-RefDet Evaluation")
+    logger.info("="*70)
+    logger.info(f"Checkpoint: {args.checkpoint}")
+    logger.info(f"Test data: {args.data_root}")
+    logger.info(f"N-way: {args.n_way}, N-query: {args.n_query}")
+    logger.info(f"Episodes: {args.n_episodes}")
+    logger.info("")
     
     # Load model
-    print("Loading model...")
+    logger.info("Loading model...")
     checkpoint = torch.load(args.checkpoint, map_location=args.device)
     
     model = YOLOv8nRefDet(
@@ -192,8 +213,8 @@ def main():
     model.to(args.device)
     model.eval()
     
-    print(f"✓ Model loaded from {args.checkpoint}")
-    print(f"  Epoch: {checkpoint.get('epoch', 'N/A')}")
+    logger.info(f"✓ Model loaded from {args.checkpoint}")
+    logger.info(f"  Epoch: {checkpoint.get('epoch', 'N/A')}")
     
     # Create dataset
     print("\nLoading test dataset...")

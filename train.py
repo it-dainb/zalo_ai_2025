@@ -43,6 +43,7 @@ from src.models.yolov8n_refdet import YOLOv8nRefDet
 from src.losses.combined_loss import ReferenceBasedDetectionLoss
 from src.augmentations import get_stage_config, get_yolov8_augmentation_params, print_stage_config
 from src.training.trainer import RefDetTrainer
+from src.training.logging_utils import setup_logger, get_experiment_name, log_experiment_config
 
 try:
     import wandb
@@ -575,6 +576,19 @@ def main():
     # Print detailed augmentation configuration
     print_stage_config(stage_name)
     
+    # Setup logger with meaningful filename
+    experiment_name = get_experiment_name(args)
+    logger = setup_logger(
+        name='training',
+        log_dir=args.checkpoint_dir,
+        stage=args.stage,
+        debug=args.debug,
+        experiment_name=experiment_name
+    )
+    
+    # Log experiment configuration
+    log_experiment_config(logger, args)
+    
     # Create data loaders
     train_loader, val_loader, triplet_loader, train_dataset, val_dataset = create_dataloaders(args, aug_config)
     
@@ -614,6 +628,7 @@ def main():
         use_wandb=args.use_wandb,  # Enable wandb logging
         val_st_iou_cache_dir=args.val_st_iou_cache,  # Pass ST-IoU cache directory
         debug_mode=args.debug,  # Enable debug logging
+        logger=logger,  # Pass configured logger with file/console handlers
     )
     
     # Resume from checkpoint if specified

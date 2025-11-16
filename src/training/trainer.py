@@ -226,6 +226,7 @@ class RefDetTrainer:
         use_wandb: bool = False,
         val_st_iou_cache_dir: Optional[str] = None,
         debug_mode: bool = False,
+        logger: Optional[logging.Logger] = None,
     ):
         """
         Args:
@@ -246,6 +247,7 @@ class RefDetTrainer:
             val_st_iou_cache_dir: Optional path to validation ST-IoU cache directory
                                   (contains *_st_iou_gt.npz and *_st_iou_metadata.json)
             debug_mode: Enable detailed debug logging
+            logger: Optional pre-configured logger instance. If None, creates default logger.
         """
         self.model = model.to(device)
         self.loss_fn = loss_fn.to(device)
@@ -271,30 +273,35 @@ class RefDetTrainer:
         # Create checkpoint directory first (before logger setup)
         self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
         
-        # Setup debug logger (after checkpoint_dir exists)
-        self.logger = logging.getLogger('RefDetTrainer')
-        self.logger.setLevel(logging.DEBUG if debug_mode else logging.INFO)
-        if not self.logger.handlers:
-            # Console handler
-            console_handler = logging.StreamHandler()
-            console_formatter = logging.Formatter(
-                '[%(asctime)s] %(levelname)s - %(message)s',
-                datefmt='%H:%M:%S'
-            )
-            console_handler.setFormatter(console_formatter)
-            self.logger.addHandler(console_handler)
-            
-            # File handler for debug mode
-            if debug_mode:
-                log_file = self.checkpoint_dir / 'training_debug.log'
-                file_handler = logging.FileHandler(log_file, mode='a')
-                file_formatter = logging.Formatter(
+        # Use provided logger or create default one
+        # The new logging system is configured in train.py and passed here
+        if logger is not None:
+            self.logger = logger
+        else:
+            # Fallback to old behavior for backward compatibility
+            self.logger = logging.getLogger('RefDetTrainer')
+            self.logger.setLevel(logging.DEBUG if debug_mode else logging.INFO)
+            if not self.logger.handlers:
+                # Console handler
+                console_handler = logging.StreamHandler()
+                console_formatter = logging.Formatter(
                     '[%(asctime)s] %(levelname)s - %(message)s',
-                    datefmt='%Y-%m-%d %H:%M:%S'
+                    datefmt='%H:%M:%S'
                 )
-                file_handler.setFormatter(file_formatter)
-                self.logger.addHandler(file_handler)
-                print(f"Debug logging enabled. Logs will be saved to: {log_file}")
+                console_handler.setFormatter(console_formatter)
+                self.logger.addHandler(console_handler)
+                
+                # File handler for debug mode
+                if debug_mode:
+                    log_file = self.checkpoint_dir / 'training_debug.log'
+                    file_handler = logging.FileHandler(log_file, mode='a')
+                    file_formatter = logging.Formatter(
+                        '[%(asctime)s] %(levelname)s - %(message)s',
+                        datefmt='%Y-%m-%d %H:%M:%S'
+                    )
+                    file_handler.setFormatter(file_formatter)
+                    self.logger.addHandler(file_handler)
+                    print(f"Debug logging enabled. Logs will be saved to: {log_file}")
         
         # Mixed precision scaler
         self.scaler = GradScaler() if mixed_precision else None

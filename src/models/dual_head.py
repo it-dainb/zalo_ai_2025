@@ -107,9 +107,11 @@ class StandardDetectionHead(nn.Module):
         cls_preds = []
         
         for i in range(self.nl):
-            # Box regression with clamping to prevent gradient explosion
+            # Box regression: l, t, r, b are DISTANCES (always positive)
+            # Use ReLU to enforce positive values, then clamp to prevent explosion
             box_pred = self.cv2[i](x[i])
-            box_pred = torch.clamp(box_pred, min=-10.0, max=10.0)
+            box_pred = F.relu(box_pred)  # Force positive (distances can't be negative)
+            box_pred = torch.clamp(box_pred, min=0.0, max=10.0)
             box_preds.append(box_pred)
             # Classification
             cls_preds.append(self.cv3[i](x[i]))
@@ -322,9 +324,11 @@ class PrototypeDetectionHead(nn.Module):
                 # No prototypes for this scale, return zeros
                 sim_scores.append(torch.zeros_like(feat_proj[:, :1]))
             
-            # Box regression (shared with features) with clamping to prevent gradient explosion
+            # Box regression: l, t, r, b are DISTANCES (always positive)
+            # Use ReLU to enforce positive values, then clamp to prevent explosion
             box_pred = self.cv2[i](x[i])
-            box_pred = torch.clamp(box_pred, min=-10.0, max=10.0)
+            box_pred = F.relu(box_pred)  # Force positive (distances can't be negative)
+            box_pred = torch.clamp(box_pred, min=0.0, max=10.0)
             box_preds.append(box_pred)
         
         return box_preds, sim_scores

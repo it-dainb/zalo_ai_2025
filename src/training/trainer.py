@@ -114,9 +114,11 @@ def postprocess_model_outputs(
     stride_tensor = torch.cat(stride_tensor_list)  # (total_anchors, 1)
     
     # Decode bbox predictions from ltrb offsets to xyxy coordinates
-    # Detection head outputs format [l, t, r, b] - offsets from anchor in stride-normalized space
+    # Detection head outputs format [l, t, r, b] - DISTANCES from anchor [0, 10]
+    # Head applies ReLU to guarantee positive (distances can't be negative)
     # Decoding: x1 = anchor_x - l*stride, y1 = anchor_y - t*stride,
     #           x2 = anchor_x + r*stride, y2 = anchor_y + b*stride
+    # Since l,t,r,b >= 0, we guarantee x1 < x2 and y1 < y2
     # Permute to (B, total_anchors, 4)
     box_preds = box_cat.permute(0, 2, 1)  # (B, total_anchors, 4) [l, t, r, b]
     
@@ -125,10 +127,10 @@ def postprocess_model_outputs(
     anchor_y = anchor_points[:, 1:2] * stride_tensor  # (total_anchors, 1) - anchor y in pixels
     
     decoded_boxes = torch.stack([
-        anchor_x.squeeze(1) - box_preds[:, :, 0] * stride_tensor.squeeze(1),  # x1
-        anchor_y.squeeze(1) - box_preds[:, :, 1] * stride_tensor.squeeze(1),  # y1
-        anchor_x.squeeze(1) + box_preds[:, :, 2] * stride_tensor.squeeze(1),  # x2
-        anchor_y.squeeze(1) + box_preds[:, :, 3] * stride_tensor.squeeze(1),  # y2
+        anchor_x.squeeze(1) - box_preds[:, :, 0] * stride_tensor.squeeze(1),  # x1 (left)
+        anchor_y.squeeze(1) - box_preds[:, :, 1] * stride_tensor.squeeze(1),  # y1 (top)
+        anchor_x.squeeze(1) + box_preds[:, :, 2] * stride_tensor.squeeze(1),  # x2 (right)
+        anchor_y.squeeze(1) + box_preds[:, :, 3] * stride_tensor.squeeze(1),  # y2 (bottom)
     ], dim=2)  # (B, total_anchors, 4)
     
     # Apply sigmoid to scores and get class predictions

@@ -114,21 +114,23 @@ def assign_targets_to_anchors(
                 
                 # CRITICAL FIX: Decode bbox predictions from ltrb offsets to xyxy coordinates
                 # Detection head outputs predictions in format [l, t, r, b] where:
-                #   l, t, r, b are offsets from anchor center in stride-normalized space [-10, 10]
+                #   l, t, r, b are DISTANCES from anchor center in stride-normalized space [0, 10]
+                # Head applies ReLU to guarantee positive values (distances can't be negative)
                 # Decoding formula:
-                #   x1 = anchor_x - l * stride
-                #   y1 = anchor_y - t * stride
-                #   x2 = anchor_x + r * stride
-                #   y2 = anchor_y + b * stride
-                # This allows full 640x640 image coverage (e.g., -10*32=320 to left/top)
+                #   x1 = anchor_x - l * stride  (distance to left, always moves left)
+                #   y1 = anchor_y - t * stride  (distance to top, always moves up)
+                #   x2 = anchor_x + r * stride  (distance to right, always moves right)
+                #   y2 = anchor_y + b * stride  (distance to bottom, always moves down)
+                # This allows full 640x640 image coverage (e.g., 10*32=320 pixels in each direction)
+                # Since l,t,r,b >= 0, we guarantee x1 < x2 and y1 < y2
                 assigned_anchor_x = anchor_x[mask]  # (N_assigned,)
                 assigned_anchor_y = anchor_y[mask]  # (N_assigned,)
                 
                 assigned_box_preds_decoded = torch.stack([
-                    assigned_anchor_x - assigned_box_preds[:, 0] * stride,  # x1 = anchor_x - l * stride
-                    assigned_anchor_y - assigned_box_preds[:, 1] * stride,  # y1 = anchor_y - t * stride
-                    assigned_anchor_x + assigned_box_preds[:, 2] * stride,  # x2 = anchor_x + r * stride
-                    assigned_anchor_y + assigned_box_preds[:, 3] * stride,  # y2 = anchor_y + b * stride
+                    assigned_anchor_x - assigned_box_preds[:, 0] * stride,  # x1 (left)
+                    assigned_anchor_y - assigned_box_preds[:, 1] * stride,  # y1 (top)
+                    assigned_anchor_x + assigned_box_preds[:, 2] * stride,  # x2 (right)
+                    assigned_anchor_y + assigned_box_preds[:, 3] * stride,  # y2 (bottom)
                 ], dim=1)  # (N_assigned, 4)
                 
                 assigned_box_preds = assigned_box_preds_decoded

@@ -303,12 +303,20 @@ def create_dataloaders(args, aug_config):
             frame_cache_size=args.frame_cache_size if not args.disable_cache else 0,
             support_cache_size_mb=args.support_cache_size_mb if not args.disable_cache else 1,
         )
+
+        n_episodes = auto_calculate_episodes(
+            dataset=val_dataset,
+            n_way=min(args.n_way, len(val_dataset.classes)),
+            n_query=args.n_query,
+            stage=args.stage,
+            coverage_factor=1.0,  # Always use full coverage for validation
+        )
         
         val_sampler = EpisodicBatchSampler(
             dataset=val_dataset,
             n_way=min(args.n_way, len(val_dataset.classes)),
             n_query=args.n_query,
-            n_episodes=5,  # Reduced from 10 to prevent memory issues during validation
+            n_episodes=n_episodes,
         )
         
         val_collator = RefDetCollator(

@@ -23,7 +23,6 @@ python train.py \
     --save_interval 5 \
     --bbox_weight 7.5 \
     --cls_weight 0.5 \
-    --dfl_weight 0.15 \
     --supcon_weight 1.2 \
     --cpe_weight 0.6 \
     --triplet_weight 0.3 \
@@ -35,4 +34,4 @@ python train.py \
     --wandb_entity it-dainb \
     --wandb_name stage_2_gradient_fix \
     --val_st_iou_cache  ./datasets/test/annotations/ \
-    --gradient_clip_norm 5.0
+    --gradient_clip_norm 10.0

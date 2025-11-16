@@ -136,8 +136,6 @@ def parse_args():
                         help='Weight for bbox regression loss')
     parser.add_argument('--cls_weight', type=float, default=0.5,
                         help='Weight for classification loss')
-    parser.add_argument('--dfl_weight', type=float, default=0.5,
-                        help='Weight for DFL loss (reduced from 1.5 to balance loss magnitudes)')
     parser.add_argument('--supcon_weight', type=float, default=1.0,
                         help='Weight for supervised contrastive loss')
     parser.add_argument('--cpe_weight', type=float, default=0.5,
@@ -370,7 +368,6 @@ def create_loss_fn(args):
     Loss Components:
         - WIoU: Wise-IoU for bbox regression (dynamic gradient allocation)
         - BCE: Binary cross-entropy for classification
-        - DFL: Distribution focal loss for box refinement
         - SupCon: Supervised contrastive loss for feature learning
         - CPE: Cross-prototype enhancement for few-shot learning
         - Triplet: Metric learning loss (Stage 3 only)
@@ -383,7 +380,6 @@ def create_loss_fn(args):
         stage=args.stage,
         bbox_weight=args.bbox_weight,
         cls_weight=args.cls_weight,
-        dfl_weight=args.dfl_weight,
         supcon_weight=args.supcon_weight,
         cpe_weight=args.cpe_weight,
         triplet_weight=args.triplet_weight,
@@ -535,7 +531,6 @@ def main():
             # Loss weights
             'bbox_weight': args.bbox_weight,
             'cls_weight': args.cls_weight,
-            'dfl_weight': args.dfl_weight,
             'supcon_weight': args.supcon_weight,
             'cpe_weight': args.cpe_weight,
             'triplet_weight': args.triplet_weight,

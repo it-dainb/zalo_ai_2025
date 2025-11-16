@@ -45,4 +45,13 @@ class BCEClassificationLoss(nn.Module):
         Returns:
             torch.Tensor: BCE loss value
         """
-        return self.bce(pred_logits, targets)
+        # Clamp logits to prevent numerical instability
+        # BCEWithLogitsLoss uses log(1 + exp(x)), which can overflow for large x
+        pred_logits = torch.clamp(pred_logits, min=-20.0, max=20.0)
+        
+        loss = self.bce(pred_logits, targets)
+        
+        # Clamp loss to prevent extreme values
+        loss = torch.clamp(loss, max=10.0)
+        
+        return loss

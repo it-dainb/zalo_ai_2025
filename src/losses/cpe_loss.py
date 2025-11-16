@@ -122,13 +122,17 @@ class CPELoss(nn.Module):
             
             # Log-sum-exp for numerical stability
             max_sim = all_sim.max()
+            # Clamp max_sim to prevent overflow
+            max_sim = torch.clamp(max_sim, min=-20.0, max=20.0)
             exp_all = torch.exp(all_sim - max_sim)
             
             # Loss: -log(sum(exp(pos)) / sum(exp(all)))
             # Clamp for numerical stability
-            exp_pos_sum = torch.clamp(torch.exp(pos_sim - max_sim).sum(), min=1e-6)
-            exp_all_sum = torch.clamp(exp_all.sum(), min=1e-6)
+            exp_pos_sum = torch.clamp(torch.exp(pos_sim - max_sim).sum(), min=1e-6, max=1e6)
+            exp_all_sum = torch.clamp(exp_all.sum(), min=1e-6, max=1e6)
             loss_i = -torch.log(exp_pos_sum / exp_all_sum)
+            # Clamp individual loss to prevent extreme values
+            loss_i = torch.clamp(loss_i, max=10.0)
             losses.append(loss_i)
         
         if len(losses) == 0:
@@ -199,9 +203,13 @@ class SimplifiedCPELoss(nn.Module):
             
             # Numerical stability
             max_sim = all_sim.max()
-            exp_pos_sum = torch.clamp(torch.exp(pos_sim - max_sim).sum(), min=1e-6)
-            exp_all_sum = torch.clamp(torch.exp(all_sim - max_sim).sum(), min=1e-6)
+            # Clamp max_sim to prevent overflow
+            max_sim = torch.clamp(max_sim, min=-20.0, max=20.0)
+            exp_pos_sum = torch.clamp(torch.exp(pos_sim - max_sim).sum(), min=1e-6, max=1e6)
+            exp_all_sum = torch.clamp(torch.exp(all_sim - max_sim).sum(), min=1e-6, max=1e6)
             loss_i = -torch.log(exp_pos_sum / exp_all_sum)
+            # Clamp individual loss to prevent extreme values
+            loss_i = torch.clamp(loss_i, max=10.0)
             losses.append(loss_i)
         
         if len(losses) == 0:

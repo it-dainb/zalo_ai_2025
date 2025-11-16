@@ -173,8 +173,11 @@ class YOLOv8BackboneExtractor(nn.Module):
         
         # Add global pooled feature for triplet loss if requested
         if return_global_feat and 'p5' in output:
-            # Global average pooling on P5 feature map (B, 256, H, W) -> (B, 256)
+            # Global average pooling on P5 for triplet loss (512-dim)
             global_feat = torch.nn.functional.adaptive_avg_pool2d(output['p5'], 1).squeeze(-1).squeeze(-1)
+            # CRITICAL: Normalize global_feat to match DINO encoder's normalization
+            # This prevents norm imbalance in triplet loss (DINO=15.95 vs YOLOv8=2.7 without normalization)
+            global_feat = torch.nn.functional.normalize(global_feat, p=2, dim=-1)
             output['global_feat'] = global_feat
         
         return output

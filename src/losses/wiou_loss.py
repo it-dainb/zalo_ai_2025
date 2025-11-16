@@ -71,20 +71,29 @@ class WIoULoss(nn.Module):
         
         # Calculate IoU
         iou = self.bbox_iou(pred, target)
+        # Clamp IoU to prevent numerical issues
+        iou = torch.clamp(iou, min=self.eps, max=1.0)
         iou_loss = 1 - iou
         
         # Update moving average of IoU loss (only during training)
         if self.training:
             with torch.no_grad():
                 batch_iou_loss_mean = iou_loss.detach().mean()
+                # Clamp to prevent extreme values
+                batch_iou_loss_mean = torch.clamp(batch_iou_loss_mean, min=self.eps, max=1.0)
                 self.iou_mean = self.iou_mean * (1 - self.momentum) + \
                                batch_iou_loss_mean * self.momentum
         
         # Calculate distance weighting (delta)
         delta = self._compute_delta(pred, target)
+        # Clamp delta to prevent explosion
+        delta = torch.clamp(delta, max=3.0)
         
         # Apply scaled loss with dynamic focusing
         loss = self._scaled_loss(delta * iou_loss, iou_loss)
+        
+        # Clamp final loss to prevent NaN propagation
+        loss = torch.clamp(loss, max=10.0)
         
         # Apply reduction
         if reduction == 'mean':

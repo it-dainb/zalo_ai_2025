@@ -283,6 +283,10 @@ class DINOSupportEncoder(nn.Module):
             # Project raw CLS token: 384 -> 256
             # This learnable transformation allows network to learn optimal feature compression
             global_feat = self.triplet_proj(prototype)  # (B, 256)
+            # CRITICAL: Normalize global_feat to prevent norm imbalance in triplet loss
+            # Without this, DINO features have much higher norms than YOLOv8 features
+            if normalize:
+                global_feat = F.normalize(global_feat, p=2, dim=-1)
             output['global_feat'] = global_feat
         
         return output

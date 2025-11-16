@@ -97,9 +97,9 @@ class DFLoss(nn.Module):
             
             loss += loss_left + loss_right
         
-        # Clamp final loss value
+        # Clamp final loss value (reduced from 15.0 to 10.0 for better stability)
         loss_mean = loss.mean()
-        return torch.clamp(loss_mean, max=15.0)
+        return torch.clamp(loss_mean, max=10.0)
     
     def decode(self, pred_dist):
         """

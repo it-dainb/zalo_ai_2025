@@ -126,11 +126,14 @@ def postprocess_model_outputs(
     anchor_x = anchor_points[:, 0:1] * stride_tensor  # (total_anchors, 1) - anchor x in pixels
     anchor_y = anchor_points[:, 1:2] * stride_tensor  # (total_anchors, 1) - anchor y in pixels
     
+    # Add small epsilon to r,b to ensure x2 > x1 and y2 > y1 even when predictions are 0
+    # This handles the case where ReLU outputs zeros in early training
+    eps = 1e-6
     decoded_boxes = torch.stack([
         anchor_x.squeeze(1) - box_preds[:, :, 0] * stride_tensor.squeeze(1),  # x1 (left)
         anchor_y.squeeze(1) - box_preds[:, :, 1] * stride_tensor.squeeze(1),  # y1 (top)
-        anchor_x.squeeze(1) + box_preds[:, :, 2] * stride_tensor.squeeze(1),  # x2 (right)
-        anchor_y.squeeze(1) + box_preds[:, :, 3] * stride_tensor.squeeze(1),  # y2 (bottom)
+        anchor_x.squeeze(1) + (box_preds[:, :, 2] + eps) * stride_tensor.squeeze(1),  # x2 (right) + eps
+        anchor_y.squeeze(1) + (box_preds[:, :, 3] + eps) * stride_tensor.squeeze(1),  # y2 (bottom) + eps
     ], dim=2)  # (B, total_anchors, 4)
     
     # Apply sigmoid to scores and get class predictions

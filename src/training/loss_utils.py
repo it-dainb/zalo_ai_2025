@@ -112,14 +112,29 @@ def assign_targets_to_anchors(
                 assigned_box_preds = img_boxes[:, mask].t()  # (N_assigned, 4)
                 assigned_cls_preds = img_sim[:, mask].t()     # (N_assigned, K)
                 
-                # CRITICAL FIX: Scale bbox predictions by stride to convert to pixel coordinates
-                # The detection head outputs predictions in stride-normalized space [-10, 10]
-                # We need to multiply by stride to match target boxes which are in pixel coords [0, 640]
-                assigned_box_preds = assigned_box_preds * stride  # (N_assigned, 4)
-                
-                # Extract anchor points for assigned anchors (in pixel coordinates)
+                # CRITICAL FIX: Decode bbox predictions from ltrb offsets to xyxy coordinates
+                # Detection head outputs predictions in format [l, t, r, b] where:
+                #   l, t, r, b are offsets from anchor center in stride-normalized space [-10, 10]
+                # Decoding formula:
+                #   x1 = anchor_x - l * stride
+                #   y1 = anchor_y - t * stride
+                #   x2 = anchor_x + r * stride
+                #   y2 = anchor_y + b * stride
+                # This allows full 640x640 image coverage (e.g., -10*32=320 to left/top)
                 assigned_anchor_x = anchor_x[mask]  # (N_assigned,)
                 assigned_anchor_y = anchor_y[mask]  # (N_assigned,)
+                
+                assigned_box_preds_decoded = torch.stack([
+                    assigned_anchor_x - assigned_box_preds[:, 0] * stride,  # x1 = anchor_x - l * stride
+                    assigned_anchor_y - assigned_box_preds[:, 1] * stride,  # y1 = anchor_y - t * stride
+                    assigned_anchor_x + assigned_box_preds[:, 2] * stride,  # x2 = anchor_x + r * stride
+                    assigned_anchor_y + assigned_box_preds[:, 3] * stride,  # y2 = anchor_y + b * stride
+                ], dim=1)  # (N_assigned, 4)
+                
+                assigned_box_preds = assigned_box_preds_decoded
+                
+                # Extract anchor points for assigned anchors (in pixel coordinates)
+                # (already extracted above as assigned_anchor_x, assigned_anchor_y)
                 assigned_anchor_pts = torch.stack([assigned_anchor_x, assigned_anchor_y], dim=1)  # (N_assigned, 2)
                 
                 # Repeat target for all assigned anchors

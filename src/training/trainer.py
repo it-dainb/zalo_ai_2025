@@ -113,10 +113,23 @@ def postprocess_model_outputs(
     anchor_points = torch.cat(anchor_points_list)  # (total_anchors, 2)
     stride_tensor = torch.cat(stride_tensor_list)  # (total_anchors, 1)
     
-    # Boxes are already in direct format (B, 4, total_anchors) - no DFL decoding needed
-    # Permute to (B, total_anchors, 4) and scale by stride
-    decoded_boxes = box_cat.permute(0, 2, 1)  # (B, total_anchors, 4)
-    decoded_boxes = decoded_boxes * stride_tensor.unsqueeze(0)  # Scale by stride: (B, total_anchors, 4) * (1, total_anchors, 1)
+    # Decode bbox predictions from ltrb offsets to xyxy coordinates
+    # Detection head outputs format [l, t, r, b] - offsets from anchor in stride-normalized space
+    # Decoding: x1 = anchor_x - l*stride, y1 = anchor_y - t*stride,
+    #           x2 = anchor_x + r*stride, y2 = anchor_y + b*stride
+    # Permute to (B, total_anchors, 4)
+    box_preds = box_cat.permute(0, 2, 1)  # (B, total_anchors, 4) [l, t, r, b]
+    
+    # Decode to xyxy format using anchor points
+    anchor_x = anchor_points[:, 0:1] * stride_tensor  # (total_anchors, 1) - anchor x in pixels
+    anchor_y = anchor_points[:, 1:2] * stride_tensor  # (total_anchors, 1) - anchor y in pixels
+    
+    decoded_boxes = torch.stack([
+        anchor_x.squeeze(1) - box_preds[:, :, 0] * stride_tensor.squeeze(1),  # x1
+        anchor_y.squeeze(1) - box_preds[:, :, 1] * stride_tensor.squeeze(1),  # y1
+        anchor_x.squeeze(1) + box_preds[:, :, 2] * stride_tensor.squeeze(1),  # x2
+        anchor_y.squeeze(1) + box_preds[:, :, 3] * stride_tensor.squeeze(1),  # y2
+    ], dim=2)  # (B, total_anchors, 4)
     
     # Apply sigmoid to scores and get class predictions
     scores_cat = scores_cat.sigmoid().permute(0, 2, 1)  # (B, total_anchors, K)

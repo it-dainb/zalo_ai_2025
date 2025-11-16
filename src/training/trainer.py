@@ -560,54 +560,54 @@ class RefDetTrainer:
                 # Backward pass
                 if self.mixed_precision:
                     self.scaler.scale(loss).backward()
-                    # IMPORTANT: Unscale gradients BEFORE checking for NaN/Inf
-                    self.scaler.unscale_(self.optimizer)
                 else:
                     loss.backward()
                 
-
-                
-                # Check for NaN/Inf in gradients and log gradient stats
-                has_nan_grad = False
-                grad_norms = {}
-                
-                for name, param in self.model.named_parameters():
-                    if param.grad is not None:
-                        grad_norm = param.grad.norm().item()
-                        grad_norms[name] = grad_norm
-                        
-                        if torch.isnan(param.grad).any() or torch.isinf(param.grad).any():
-                            self.logger.warning(f"⚠️ NaN/Inf gradient in {name}")
-                            has_nan_grad = True
-                            if self.debug_mode or batch_idx == 0:
-                                self.logger.debug(f"   Grad stats: min={param.grad.min():.4e}, max={param.grad.max():.4e}, mean={param.grad.mean():.4e}")
-                
-                # Debug log gradient norms
-                if self.debug_mode and (batch_idx == 0 or batch_idx % 50 == 0):
-                    self.logger.debug(f"\nGradient Norms:")
-                    total_grad_norm = sum(grad_norms.values())
-                    self.logger.debug(f"  Total Grad Norm: {total_grad_norm:.4e}")
-                    # Log top 5 largest gradients
-                    top_grads = sorted(grad_norms.items(), key=lambda x: x[1], reverse=True)[:5]
-                    for name, norm in top_grads:
-                        self.logger.debug(f"  {name}: {norm:.4e}")
-                
-                if has_nan_grad:
-                    self._log_batch_info(batch_to_use, batch_idx)
-                    print(f"Loss components:")
-                    for key, val in losses_dict.items():
-                        print(f"  {key}: {val}")
-                    self.logger.error(f"❌ NaN/Inf gradients detected at batch {batch_idx}. Skipping optimizer step.")
-                    self.optimizer.zero_grad()
-                    
-                    # Reset scaler state if using mixed precision
-                    if self.mixed_precision and self.scaler is not None:
-                        self.scaler = GradScaler(enabled=True)
-                    
-                    continue
-                
                 # Optimizer step (with gradient accumulation)
                 if (batch_idx + 1) % self.gradient_accumulation_steps == 0:
+                    # Unscale gradients for NaN/Inf checking and gradient clipping
+                    if self.mixed_precision:
+                        self.scaler.unscale_(self.optimizer)
+                    
+                    # Check for NaN/Inf in gradients and log gradient stats
+                    has_nan_grad = False
+                    grad_norms = {}
+                    
+                    for name, param in self.model.named_parameters():
+                        if param.grad is not None:
+                            grad_norm = param.grad.norm().item()
+                            grad_norms[name] = grad_norm
+                            
+                            if torch.isnan(param.grad).any() or torch.isinf(param.grad).any():
+                                self.logger.warning(f"⚠️ NaN/Inf gradient in {name}")
+                                has_nan_grad = True
+                                if self.debug_mode or batch_idx == 0:
+                                    self.logger.debug(f"   Grad stats: min={param.grad.min():.4e}, max={param.grad.max():.4e}, mean={param.grad.mean():.4e}")
+                    
+                    # Debug log gradient norms
+                    if self.debug_mode and (batch_idx == 0 or batch_idx % 50 == 0):
+                        self.logger.debug(f"\nGradient Norms:")
+                        total_grad_norm = sum(grad_norms.values())
+                        self.logger.debug(f"  Total Grad Norm: {total_grad_norm:.4e}")
+                        # Log top 5 largest gradients
+                        top_grads = sorted(grad_norms.items(), key=lambda x: x[1], reverse=True)[:5]
+                        for name, norm in top_grads:
+                            self.logger.debug(f"  {name}: {norm:.4e}")
+                    
+                    if has_nan_grad:
+                        self._log_batch_info(batch_to_use, batch_idx)
+                        print(f"Loss components:")
+                        for key, val in losses_dict.items():
+                            print(f"  {key}: {val}")
+                        self.logger.error(f"❌ NaN/Inf gradients detected at batch {batch_idx}. Skipping optimizer step.")
+                        self.optimizer.zero_grad()
+                        
+                        # Reset scaler state if using mixed precision
+                        if self.mixed_precision and self.scaler is not None:
+                            self.scaler = GradScaler(enabled=True)
+                        
+                        continue
+                    
                     # Compute total gradient norm before clipping
                     total_norm_before = 0.0
                     if self.debug_mode and (batch_idx == 0 or batch_idx % 50 == 0):
@@ -617,9 +617,7 @@ class RefDetTrainer:
                         total_norm_before = total_norm_before ** 0.5
                     
                     if self.mixed_precision:
-                        # NOTE: Gradients already unscaled after backward() for NaN checking
-                        
-                        # Gradient clipping (if enabled)
+                        # Gradient clipping (if enabled) - gradients already unscaled
                         clipped_norm = 0.0
                         if self.gradient_clip_norm > 0:
                             clipped_norm = torch.nn.utils.clip_grad_norm_(

@@ -112,6 +112,11 @@ def assign_targets_to_anchors(
                 assigned_box_preds = img_boxes[:, mask].t()  # (N_assigned, 4)
                 assigned_cls_preds = img_sim[:, mask].t()     # (N_assigned, K)
                 
+                # CRITICAL FIX: Scale bbox predictions by stride to convert to pixel coordinates
+                # The detection head outputs predictions in stride-normalized space [-10, 10]
+                # We need to multiply by stride to match target boxes which are in pixel coords [0, 640]
+                assigned_box_preds = assigned_box_preds * stride  # (N_assigned, 4)
+                
                 # Extract anchor points for assigned anchors (in pixel coordinates)
                 assigned_anchor_x = anchor_x[mask]  # (N_assigned,)
                 assigned_anchor_y = anchor_y[mask]  # (N_assigned,)

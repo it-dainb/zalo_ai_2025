@@ -524,3 +524,258 @@ Loss Inputs:
 Detection Forward Pass:
 [2025-11-16 21:52:57] DEBUG -   Support images: N=2, K=3, C=3, H=512, W=512
 [2025-11-16 21:52:57] DEBUG -   Query images: torch.Size([8, 3, 640, 640])
+[2025-11-16 22:12:34] DEBUG - 
+Initial learning rate: 1.000000e-05
+[2025-11-16 22:12:34] DEBUG - Optimizer: AdamW
+[2025-11-16 22:12:34] DEBUG - Scheduler: CosineAnnealingLR
+[2025-11-16 22:12:38] DEBUG - 
+======================================================================
+[2025-11-16 22:12:38] DEBUG - BATCH 0 - Type: detection
+[2025-11-16 22:12:38] DEBUG - ======================================================================
+[2025-11-16 22:12:38] DEBUG - 
+Batch Contents:
+[2025-11-16 22:12:38] DEBUG -   query_images:
+[2025-11-16 22:12:38] DEBUG -     Shape: torch.Size([8, 3, 640, 640])
+[2025-11-16 22:12:38] DEBUG -     Dtype: torch.float32
+[2025-11-16 22:12:38] DEBUG -     Device: cuda:0
+[2025-11-16 22:12:38] DEBUG -     Range: [-2.1179, 2.6400]
+[2025-11-16 22:12:38] DEBUG -     Mean: -0.6702
+[2025-11-16 22:12:38] DEBUG -     Std: 0.9102
+[2025-11-16 22:12:38] DEBUG -     Has NaN: False
+[2025-11-16 22:12:38] DEBUG -     Has Inf: False
+[2025-11-16 22:12:38] DEBUG -   support_images:
+[2025-11-16 22:12:38] DEBUG -     Shape: torch.Size([2, 3, 3, 512, 512])
+[2025-11-16 22:12:38] DEBUG -     Dtype: torch.float32
+[2025-11-16 22:12:38] DEBUG -     Device: cuda:0
+[2025-11-16 22:12:38] DEBUG -     Range: [-2.1179, 2.6400]
+[2025-11-16 22:12:38] DEBUG -     Mean: -0.5685
+[2025-11-16 22:12:38] DEBUG -     Std: 1.2452
+[2025-11-16 22:12:38] DEBUG -     Has NaN: False
+[2025-11-16 22:12:38] DEBUG -     Has Inf: False
+[2025-11-16 22:12:38] DEBUG -   target_bboxes: List of 8 tensors
+[2025-11-16 22:12:38] DEBUG -     First tensor shape: torch.Size([1, 4])
+[2025-11-16 22:12:38] DEBUG -   target_classes: List of 8 tensors
+[2025-11-16 22:12:38] DEBUG -     First tensor shape: torch.Size([1])
+[2025-11-16 22:12:38] DEBUG -   class_ids:
+[2025-11-16 22:12:38] DEBUG -     Shape: torch.Size([8])
+[2025-11-16 22:12:38] DEBUG -     Dtype: torch.int64
+[2025-11-16 22:12:38] DEBUG -     Device: cuda:0
+[2025-11-16 22:12:38] DEBUG -   video_ids: List of 8 str
+[2025-11-16 22:12:38] DEBUG -   num_classes: int
+[2025-11-16 22:12:38] DEBUG -   batch_type: str
+[2025-11-16 22:12:38] DEBUG - 
+Detection Forward Pass:
+[2025-11-16 22:12:38] DEBUG -   Support images: N=2, K=3, C=3, H=512, W=512
+[2025-11-16 22:12:38] DEBUG -   Query images: torch.Size([8, 3, 640, 640])
+[2025-11-16 22:12:41] DEBUG - 
+Model Outputs:
+[2025-11-16 22:12:41] DEBUG -   prototype_boxes: List of 4 tensors, first shape=torch.Size([8, 4, 160, 160])
+[2025-11-16 22:12:41] DEBUG -   prototype_sim: List of 4 tensors, first shape=torch.Size([8, 2, 160, 160])
+[2025-11-16 22:12:41] DEBUG -   query_features: torch.Size([8, 128]), range=[-0.2456, 1.7793]
+[2025-11-16 22:12:41] DEBUG -   support_prototypes: torch.Size([2, 128]), range=[-0.0249, 0.3781]
+[2025-11-16 22:12:41] DEBUG - 
+Loss Inputs:
+[2025-11-16 22:12:41] DEBUG -   pred_bboxes: torch.Size([703, 4])
+[2025-11-16 22:12:41] DEBUG -   pred_cls_logits: torch.Size([703, 2])
+[2025-11-16 22:12:41] DEBUG -   target_bboxes: torch.Size([703, 4])
+[2025-11-16 22:12:41] DEBUG -   target_cls: torch.Size([703, 2])
+[2025-11-16 22:12:41] DEBUG -   proposal_features: torch.Size([703, 512])
+[2025-11-16 22:12:41] DEBUG -   proposal_labels: torch.Size([703])
+[2025-11-16 22:12:41] DEBUG -   query_features: torch.Size([8, 128])
+[2025-11-16 22:12:41] DEBUG -   support_prototypes: torch.Size([2, 128])
+[2025-11-16 22:12:41] DEBUG -   feature_labels: torch.Size([8])
+[2025-11-16 22:12:41] DEBUG -   triplet_embeddings: torch.Size([8, 128])
+[2025-11-16 22:12:41] DEBUG -   triplet_labels: torch.Size([8])
+[2025-11-16 22:12:41] DEBUG - 
+Loss Components:
+[2025-11-16 22:12:41] DEBUG -   Total Loss: 6.439357
+[2025-11-16 22:12:41] DEBUG -   bbox_loss: 2.447329
+[2025-11-16 22:12:41] DEBUG -   cls_loss: 1.030023
+[2025-11-16 22:12:41] DEBUG -   supcon_loss: 0.759088
+[2025-11-16 22:12:41] DEBUG -   cpe_loss: 0.541199
+[2025-11-16 22:12:41] DEBUG -   triplet_loss: 0.000000
+[2025-11-16 22:12:41] INFO - 
+============================================================
+[2025-11-16 22:12:41] INFO - [Step 0] ANCHOR ASSIGNMENT DIAGNOSTICS
+[2025-11-16 22:12:41] INFO - ============================================================
+[2025-11-16 22:12:41] INFO - 📍 Assigned Anchors: 703
+[2025-11-16 22:12:41] INFO -    Total Available Anchors: 272000
+[2025-11-16 22:12:41] INFO -    Assignment Rate: 0.26%
+[2025-11-16 22:12:41] INFO - 
+   Per-Scale Breakdown:
+[2025-11-16 22:12:41] INFO -      Scale 0 (stride=4): 160x160 = 204800 anchors
+[2025-11-16 22:12:41] INFO -      Scale 1 (stride=8): 80x80 = 51200 anchors
+[2025-11-16 22:12:41] INFO -      Scale 2 (stride=16): 40x40 = 12800 anchors
+[2025-11-16 22:12:41] INFO -      Scale 3 (stride=32): 20x20 = 3200 anchors
+[2025-11-16 22:12:41] INFO - 
+🎯 Ground Truth Objects:
+[2025-11-16 22:12:41] INFO -    Total GT Boxes: 8
+[2025-11-16 22:12:41] INFO -    Avg GT per Image: 1.00
+[2025-11-16 22:12:41] INFO -    Anchors per GT: 87.88
+[2025-11-16 22:12:41] INFO - 
+📐 COORDINATE FORMAT VERIFICATION
+[2025-11-16 22:12:41] INFO -    Format: xyxy (x1, y1, x2, y2)
+[2025-11-16 22:12:41] INFO -    Predictions:
+[2025-11-16 22:12:41] INFO -      Valid x2 > x1: 20.5%
+[2025-11-16 22:12:41] INFO -      Valid y2 > y1: 49.8%
+[2025-11-16 22:12:41] INFO -      Range: x=[-2.7, 1.7], y=[-1.7, 3.3]
+[2025-11-16 22:12:41] INFO -    Targets:
+[2025-11-16 22:12:41] INFO -      Valid x2 > x1: 100.0%
+[2025-11-16 22:12:41] INFO -      Valid y2 > y1: 100.0%
+[2025-11-16 22:12:41] INFO -      Range: x=[196.0, 550.0], y=[151.0, 469.0]
+[2025-11-16 22:12:41] ERROR -    ❌ PREDICTION FORMAT ERROR: Some boxes have x2<=x1 or y2<=y1
+[2025-11-16 22:12:41] ERROR -       → Check bbox decoding logic in detection head
+[2025-11-16 22:12:41] INFO - 
+📊 BBOX STATISTICS
+[2025-11-16 22:12:41] INFO -    IoU Distribution:
+[2025-11-16 22:12:41] INFO -      Mean: 0.000
+[2025-11-16 22:12:41] INFO -      Median: 0.000
+[2025-11-16 22:12:41] INFO -      Min: 0.000, Max: 0.000
+[2025-11-16 22:12:41] INFO -      Histogram:
+[2025-11-16 22:12:41] INFO -        [0.0, 0.1):  703 (100.0%)
+[2025-11-16 22:12:41] INFO -        [0.1, 0.3):    0 (  0.0%)
+[2025-11-16 22:12:41] INFO -        [0.3, 0.5):    0 (  0.0%)
+[2025-11-16 22:12:41] INFO -        [0.5, 0.7):    0 (  0.0%)
+[2025-11-16 22:12:41] INFO -        [0.7, 0.9):    0 (  0.0%)
+[2025-11-16 22:12:41] INFO -        [0.9, 1.0):    0 (  0.0%)
+[2025-11-16 22:12:41] INFO - 
+   Target BBox Sizes:
+[2025-11-16 22:12:41] INFO -      Mean size (√area): 34.9 pixels
+[2025-11-16 22:12:41] INFO -      Mean width: 39.1, height: 32.7
+[2025-11-16 22:12:41] INFO -      Min: 20.6, Max: 41.4
+[2025-11-16 22:12:41] INFO -      Size Distribution:
+[2025-11-16 22:12:41] INFO -        Small (<32²): 162 (23.0%)
+[2025-11-16 22:12:41] INFO -        Medium (32²-96²): 541 (77.0%)
+[2025-11-16 22:12:41] INFO -        Large (>96²): 0 (0.0%)
+[2025-11-16 22:12:41] INFO - 
+   Aspect Ratios (width/height):
+[2025-11-16 22:12:41] INFO -      Target mean: 1.30
+[2025-11-16 22:12:41] INFO -      Pred mean: 0.91
+[2025-11-16 22:12:41] INFO - 
+   Anchor Statistics:
+[2025-11-16 22:12:41] INFO -      Stride  4:  527 anchors, mean IoU: 0.000
+[2025-11-16 22:12:41] INFO -      Stride  8:  130 anchors, mean IoU: 0.000
+[2025-11-16 22:12:41] INFO -      Stride 16:   35 anchors, mean IoU: 0.000
+[2025-11-16 22:12:41] INFO -      Stride 32:   11 anchors, mean IoU: 0.000
+[2025-11-16 22:12:41] INFO - 
+🎯 CLASSIFICATION STATISTICS
+[2025-11-16 22:12:41] INFO -    Accuracy: 42.39%
+[2025-11-16 22:12:41] INFO -    Confidence (max prob):
+[2025-11-16 22:12:41] INFO -      Mean: 0.633
+[2025-11-16 22:12:41] INFO -      Min: 0.025, Max: 0.993
+[2025-11-16 22:12:41] INFO - 
+   Class Distribution:
+[2025-11-16 22:12:41] INFO -      Class 0: 541 samples
+[2025-11-16 22:12:41] INFO -      Class 1: 162 samples
+[2025-11-16 22:12:41] INFO - 
+💰 LOSS BREAKDOWN
+[2025-11-16 22:12:41] INFO -    Total Loss: 0.0000
+[2025-11-16 22:12:41] INFO -      bbox_loss      :   2.4473 (  0.0%)
+[2025-11-16 22:12:41] INFO -      cls_loss       :   1.0300 (  0.0%)
+[2025-11-16 22:12:41] INFO -      supcon_loss    :   0.7591 (  0.0%)
+[2025-11-16 22:12:41] INFO -      cpe_loss       :   0.5412 (  0.0%)
+[2025-11-16 22:12:41] INFO -      triplet_loss   :   0.0000 (  0.0%)
+[2025-11-16 22:12:47] DEBUG - 
+Detection Forward Pass:
+[2025-11-16 22:12:47] DEBUG -   Support images: N=2, K=3, C=3, H=512, W=512
+[2025-11-16 22:12:47] DEBUG -   Query images: torch.Size([8, 3, 640, 640])
+[2025-11-16 22:12:48] DEBUG - 
+Model Outputs:
+[2025-11-16 22:12:48] DEBUG -   prototype_boxes: List of 4 tensors, first shape=torch.Size([8, 4, 160, 160])
+[2025-11-16 22:12:48] DEBUG -   prototype_sim: List of 4 tensors, first shape=torch.Size([8, 2, 160, 160])
+[2025-11-16 22:12:48] DEBUG -   query_features: torch.Size([8, 128]), range=[-0.2566, 1.7793]
+[2025-11-16 22:12:48] DEBUG -   support_prototypes: torch.Size([2, 128]), range=[-0.0250, 0.3444]
+[2025-11-16 22:12:49] DEBUG - 
+Loss Inputs:
+[2025-11-16 22:12:49] DEBUG -   pred_bboxes: torch.Size([113, 4])
+[2025-11-16 22:12:49] DEBUG -   pred_cls_logits: torch.Size([113, 2])
+[2025-11-16 22:12:49] DEBUG -   target_bboxes: torch.Size([113, 4])
+[2025-11-16 22:12:49] DEBUG -   target_cls: torch.Size([113, 2])
+[2025-11-16 22:12:49] DEBUG -   proposal_features: torch.Size([113, 512])
+[2025-11-16 22:12:49] DEBUG -   proposal_labels: torch.Size([113])
+[2025-11-16 22:12:49] DEBUG -   query_features: torch.Size([8, 128])
+[2025-11-16 22:12:49] DEBUG -   support_prototypes: torch.Size([2, 128])
+[2025-11-16 22:12:49] DEBUG -   feature_labels: torch.Size([8])
+[2025-11-16 22:12:49] DEBUG -   triplet_embeddings: torch.Size([8, 128])
+[2025-11-16 22:12:49] DEBUG -   triplet_labels: torch.Size([8])
+[2025-11-16 22:12:49] INFO - 
+============================================================
+[2025-11-16 22:12:49] INFO - [Step 0] ANCHOR ASSIGNMENT DIAGNOSTICS
+[2025-11-16 22:12:49] INFO - ============================================================
+[2025-11-16 22:12:49] INFO - 📍 Assigned Anchors: 113
+[2025-11-16 22:12:49] INFO -    Total Available Anchors: 272000
+[2025-11-16 22:12:49] INFO -    Assignment Rate: 0.04%
+[2025-11-16 22:12:49] INFO - 
+   Per-Scale Breakdown:
+[2025-11-16 22:12:49] INFO -      Scale 0 (stride=4): 160x160 = 204800 anchors
+[2025-11-16 22:12:49] INFO -      Scale 1 (stride=8): 80x80 = 51200 anchors
+[2025-11-16 22:12:49] INFO -      Scale 2 (stride=16): 40x40 = 12800 anchors
+[2025-11-16 22:12:49] INFO -      Scale 3 (stride=32): 20x20 = 3200 anchors
+[2025-11-16 22:12:49] INFO - 
+🎯 Ground Truth Objects:
+[2025-11-16 22:12:49] INFO -    Total GT Boxes: 7
+[2025-11-16 22:12:49] INFO -    Avg GT per Image: 0.88
+[2025-11-16 22:12:49] INFO -    Anchors per GT: 16.14
+[2025-11-16 22:12:49] INFO - 
+📐 COORDINATE FORMAT VERIFICATION
+[2025-11-16 22:12:49] INFO -    Format: xyxy (x1, y1, x2, y2)
+[2025-11-16 22:12:49] INFO -    Predictions:
+[2025-11-16 22:12:49] INFO -      Valid x2 > x1: 17.7%
+[2025-11-16 22:12:49] INFO -      Valid y2 > y1: 46.0%
+[2025-11-16 22:12:49] INFO -      Range: x=[-0.7, 2.0], y=[-2.4, 1.8]
+[2025-11-16 22:12:49] INFO -    Targets:
+[2025-11-16 22:12:49] INFO -      Valid x2 > x1: 100.0%
+[2025-11-16 22:12:49] INFO -      Valid y2 > y1: 100.0%
+[2025-11-16 22:12:49] INFO -      Range: x=[99.4, 527.0], y=[0.6, 423.0]
+[2025-11-16 22:12:49] ERROR -    ❌ PREDICTION FORMAT ERROR: Some boxes have x2<=x1 or y2<=y1
+[2025-11-16 22:12:49] ERROR -       → Check bbox decoding logic in detection head
+[2025-11-16 22:12:49] INFO - 
+📊 BBOX STATISTICS
+[2025-11-16 22:12:49] INFO -    IoU Distribution:
+[2025-11-16 22:12:49] INFO -      Mean: 0.000
+[2025-11-16 22:12:49] INFO -      Median: 0.000
+[2025-11-16 22:12:49] INFO -      Min: 0.000, Max: 0.000
+[2025-11-16 22:12:49] INFO -      Histogram:
+[2025-11-16 22:12:49] INFO -        [0.0, 0.1):  113 (100.0%)
+[2025-11-16 22:12:49] INFO -        [0.1, 0.3):    0 (  0.0%)
+[2025-11-16 22:12:49] INFO -        [0.3, 0.5):    0 (  0.0%)
+[2025-11-16 22:12:49] INFO -        [0.5, 0.7):    0 (  0.0%)
+[2025-11-16 22:12:49] INFO -        [0.7, 0.9):    0 (  0.0%)
+[2025-11-16 22:12:49] INFO -        [0.9, 1.0):    0 (  0.0%)
+[2025-11-16 22:12:49] INFO - 
+   Target BBox Sizes:
+[2025-11-16 22:12:49] INFO -      Mean size (√area): 13.8 pixels
+[2025-11-16 22:12:49] INFO -      Mean width: 15.9, height: 12.4
+[2025-11-16 22:12:49] INFO -      Min: 7.9, Max: 17.8
+[2025-11-16 22:12:49] INFO -      Size Distribution:
+[2025-11-16 22:12:49] INFO -        Small (<32²): 113 (100.0%)
+[2025-11-16 22:12:49] INFO -        Medium (32²-96²): 0 (0.0%)
+[2025-11-16 22:12:49] INFO -        Large (>96²): 0 (0.0%)
+[2025-11-16 22:12:49] INFO - 
+   Aspect Ratios (width/height):
+[2025-11-16 22:12:49] INFO -      Target mean: 1.44
+[2025-11-16 22:12:49] INFO -      Pred mean: -10.38
+[2025-11-16 22:12:49] INFO - 
+   Anchor Statistics:
+[2025-11-16 22:12:49] INFO -      Stride  4:   80 anchors, mean IoU: 0.000
+[2025-11-16 22:12:49] INFO -      Stride  8:   19 anchors, mean IoU: 0.000
+[2025-11-16 22:12:49] INFO -      Stride 16:    7 anchors, mean IoU: 0.000
+[2025-11-16 22:12:49] INFO -      Stride 32:    7 anchors, mean IoU: 0.000
+[2025-11-16 22:12:49] INFO - 
+🎯 CLASSIFICATION STATISTICS
+[2025-11-16 22:12:49] INFO -    Accuracy: 40.71%
+[2025-11-16 22:12:49] INFO -    Confidence (max prob):
+[2025-11-16 22:12:49] INFO -      Mean: 0.608
+[2025-11-16 22:12:49] INFO -      Min: 0.079, Max: 0.961
+[2025-11-16 22:12:49] INFO - 
+   Class Distribution:
+[2025-11-16 22:12:49] INFO -      Class 0: 41 samples
+[2025-11-16 22:12:49] INFO -      Class 1: 72 samples
+[2025-11-16 22:12:49] INFO - 
+💰 LOSS BREAKDOWN
+[2025-11-16 22:12:49] INFO -    Total Loss: 0.0000
+[2025-11-16 22:12:49] INFO -      bbox_loss      :   2.5988 (  0.0%)
+[2025-11-16 22:12:49] INFO -      cls_loss       :   0.9597 (  0.0%)
+[2025-11-16 22:12:49] INFO -      supcon_loss    :   0.6932 (  0.0%)
+[2025-11-16 22:12:49] INFO -      cpe_loss       :   0.6641 (  0.0%)
+[2025-11-16 22:12:49] INFO -      triplet_loss   :   0.0000 (  0.0%)

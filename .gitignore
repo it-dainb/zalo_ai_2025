@@ -10,3 +10,4 @@ raw/
 *.zip
 *.pt
 ultralytics/
+*.log

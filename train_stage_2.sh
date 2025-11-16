@@ -12,7 +12,7 @@ python train.py \
     --use_triplet \
     --triplet_ratio 0.3 \
     --negative_strategy mixed \
-    --triplet_batch_size 8 \
+    --triplet_batch_size 32 \
     --use_batch_hard_triplet \
     --lr 1e-4 \
     --weight_decay 0.05 \
@@ -23,11 +23,11 @@ python train.py \
     --save_interval 5 \
     --bbox_weight 7.5 \
     --cls_weight 0.5 \
-    --dfl_weight 0.75 \
+    --dfl_weight 1.0 \
     --supcon_weight 1.2 \
     --cpe_weight 0.6 \
     --triplet_weight 0.3 \
-    --yolo_weights ./models/yolov8-n.pt \
+    --yolo_weights ./models/base/yolov8-n.pt \
     --dinov3_model vit_small_patch16_dinov3.lvd1689m \
     --freeze_dinov3 \
     --use_wandb \

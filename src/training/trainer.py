@@ -601,6 +601,7 @@ class RefDetTrainer:
                         self.logger.debug(f"  {name}: {norm:.4e}")
                 
                 if has_nan_grad:
+                    self._log_batch_info(batch_to_use, batch_idx)
                     self.logger.error(f"❌ NaN/Inf gradients detected at batch {batch_idx}. Skipping optimizer step.")
                     self.optimizer.zero_grad()
                     

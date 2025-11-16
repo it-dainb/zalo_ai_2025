@@ -231,8 +231,9 @@ def compute_dfl_targets(bboxes: torch.Tensor, reg_max: int = 16) -> torch.Tensor
     """
     Convert bbox coordinates to DFL (Distribution Focal Loss) targets.
     
-    DFL represents each coordinate as a distribution over reg_max+1 bins,
+    DFL represents each coordinate as a distribution over reg_max bins,
     allowing the model to learn uncertainty in box predictions.
+    Note: FIXED to use reg_max bins (16), not reg_max+1 bins (17).
     
     Args:
         bboxes: (N, 4) tensor of normalized bboxes (x1, y1, x2, y2) in [0, 1]

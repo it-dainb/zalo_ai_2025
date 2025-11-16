@@ -43,17 +43,17 @@ class DFLoss(nn.Module):
         Forward pass
         
         Args:
-            pred_dist (torch.Tensor): Predicted distribution [N, 4*(reg_max+1)]
-                Each coordinate has (reg_max+1) bins
-            target (torch.Tensor): Target bbox coordinates [N, 4]
-                Values should be in range [0, reg_max]
+            pred_dist (torch.Tensor): Predicted distribution [N, 4*reg_max]
+                Each coordinate has reg_max bins (e.g., 16 bins for reg_max=16)
+            target (torch.Tensor): Target bbox distances [N, 4] as [left, top, right, bottom]
+                Values should be in range [0, reg_max-0.01] (distance from anchor to bbox edge)
                 
         Returns:
             torch.Tensor: DFL loss value
         """
-        # Reshape pred_dist to [N, 4, reg_max+1]
+        # Reshape pred_dist to [N, 4, reg_max]
         batch_size = pred_dist.shape[0]
-        pred_dist = pred_dist.reshape(batch_size, 4, self.reg_max + 1)
+        pred_dist = pred_dist.reshape(batch_size, 4, self.reg_max)
         
         # CRITICAL: Clamp pred_dist BEFORE softmax to prevent gradient explosion
         # Softmax gradient can explode even with moderate inputs, causing NaN backprop
@@ -74,14 +74,14 @@ class DFLoss(nn.Module):
         loss = 0
         for i in range(4):
             # Get distribution for coordinate i
-            dist = pred_dist[:, i, :]  # [N, reg_max+1]
+            dist = pred_dist[:, i, :]  # [N, reg_max]
             
             # Apply softmax to get probabilities
             dist = F.softmax(dist, dim=-1)
             
             # Get probabilities for target bins
             target_l = target_left[:, i]
-            target_r = torch.clamp(target_right[:, i], max=self.reg_max)
+            target_r = torch.clamp(target_right[:, i], max=self.reg_max - 1)
             
             # Cross-entropy with linear interpolation
             prob_left = dist[torch.arange(batch_size), target_l]
@@ -101,22 +101,24 @@ class DFLoss(nn.Module):
             
             loss += loss_left + loss_right
         
-        # Clamp final loss value (reduced from 15.0 to 10.0 for better stability)
+        # Return mean loss (individual losses already clamped at 20.0)
+        # DO NOT clamp the final mean - it prevents learning from random init
+        # Random init gives ~2.77 per coord × 4 coords = 11.08, which would be clamped at 10.0
         loss_mean = loss.mean()
-        return torch.clamp(loss_mean, max=10.0)
+        return loss_mean
     
     def decode(self, pred_dist):
         """
-        Decode distribution to continuous bbox coordinates
+        Decode distribution to continuous bbox distances
         
         Args:
-            pred_dist (torch.Tensor): Predicted distribution [N, 4*(reg_max+1)]
+            pred_dist (torch.Tensor): Predicted distribution [N, 4*reg_max]
             
         Returns:
-            torch.Tensor: Decoded bbox coordinates [N, 4]
+            torch.Tensor: Decoded bbox distances [N, 4] as [left, top, right, bottom]
         """
         batch_size = pred_dist.shape[0]
-        pred_dist = pred_dist.reshape(batch_size, 4, self.reg_max + 1)
+        pred_dist = pred_dist.reshape(batch_size, 4, self.reg_max)
         
         # CRITICAL: Clamp pred_dist BEFORE softmax to prevent gradient explosion
         pred_dist = torch.clamp(pred_dist, min=-10.0, max=10.0)
@@ -125,7 +127,7 @@ class DFLoss(nn.Module):
         pred_dist = F.softmax(pred_dist, dim=-1)
         
         # Expected value: sum of bin_index * probability
-        bins = torch.arange(self.reg_max + 1, dtype=torch.float32, device=pred_dist.device)
+        bins = torch.arange(self.reg_max, dtype=torch.float32, device=pred_dist.device)
         decoded = (pred_dist * bins.view(1, 1, -1)).sum(dim=-1)
         
         return decoded

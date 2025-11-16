@@ -37,6 +37,9 @@ class DFL(nn.Module):
     """
     Distribution Focal Loss (DFL) module.
     Used in YOLOv8 for box regression.
+    
+    CRITICAL: Uses reg_max bins (16), NOT reg_max+1 (17).
+    This matches Ultralytics implementation exactly.
     """
     
     def __init__(self, c1=16):
@@ -49,6 +52,7 @@ class DFL(nn.Module):
     def forward(self, x):
         b, c, a = x.shape  # batch, channels, anchors
         # Cast input to match conv weight dtype for mixed precision compatibility
+        # Expected input: (B, 4*reg_max, H*W) where c = 4*reg_max (e.g., 64 for reg_max=16)
         x_reshaped = x.view(b, 4, self.c1, a).transpose(2, 1).softmax(1)
         x_reshaped = x_reshaped.to(self.conv.weight.dtype)
         return self.conv(x_reshaped).view(b, 4, a)
@@ -77,11 +81,12 @@ class StandardDetectionHead(nn.Module):
         c2, c3 = max((16, ch[0] // 4, self.reg_max * 4)), max(ch[0], self.nc)  # channels
         
         # Build detection heads for each scale
+        # CRITICAL FIX: Output 4*reg_max channels (64 for reg_max=16), NOT 4*(reg_max+1) (68)
         self.cv2 = nn.ModuleList(
             nn.Sequential(
                 Conv(x, c2, 3, padding=1),
                 Conv(c2, c2, 3, padding=1),
-                nn.Conv2d(c2, 4 * (self.reg_max + 1), 1)
+                nn.Conv2d(c2, 4 * self.reg_max, 1)  # FIXED: 4*reg_max instead of 4*(reg_max+1)
             ) for x in ch
         )
         
@@ -176,12 +181,13 @@ class PrototypeDetectionHead(nn.Module):
         ])
         
         # Box regression heads (same as standard head)
+        # CRITICAL FIX: Output 4*reg_max channels (64 for reg_max=16), NOT 4*(reg_max+1) (68)
         c2 = max((16, ch[0] // 4, self.reg_max * 4))
         self.cv2 = nn.ModuleList(
             nn.Sequential(
                 Conv(x, c2, 3, padding=1),
                 Conv(c2, c2, 3, padding=1),
-                nn.Conv2d(c2, 4 * (self.reg_max + 1), 1)
+                nn.Conv2d(c2, 4 * self.reg_max, 1)  # FIXED: 4*reg_max instead of 4*(reg_max+1)
             ) for x in ch
         )
         

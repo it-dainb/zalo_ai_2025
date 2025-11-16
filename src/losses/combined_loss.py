@@ -149,7 +149,7 @@ class ReferenceBasedDetectionLoss(nn.Module):
             # Core detection
             pred_bboxes (torch.Tensor): Predicted boxes [N, 4] (x1,y1,x2,y2)
             pred_cls_logits (torch.Tensor): Class logits [N, num_classes]
-            pred_dfl_dist (torch.Tensor): DFL distribution [N, 4*(reg_max+1)]
+            pred_dfl_dist (torch.Tensor): DFL distribution [N, 4*reg_max] (FIXED: was 4*(reg_max+1))
             target_bboxes (torch.Tensor): Target boxes [N, 4]
             target_cls (torch.Tensor): Target classes [N, num_classes]
             target_dfl (torch.Tensor): Target DFL coords [N, 4]

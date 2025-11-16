@@ -33,8 +33,8 @@ def test_anchor_assignment():
     
     for stride in strides:
         H = W = 640 // stride
-        # Box predictions: (B, 4*(reg_max+1), H, W)
-        proto_boxes_list.append(torch.randn(batch_size, 4 * (reg_max + 1), H, W, device=device))
+        # Box predictions: (B, 4*reg_max, H, W) - FIXED: use reg_max, not reg_max+1
+        proto_boxes_list.append(torch.randn(batch_size, 4 * reg_max, H, W, device=device))
         # Similarity scores: (B, K, H, W)
         proto_sim_list.append(torch.randn(batch_size, num_classes, H, W, device=device))
     

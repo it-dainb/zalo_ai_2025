@@ -5,7 +5,7 @@ Tests the full loss integration and training stages
 
 import torch
 import pytest
-from losses.combined_loss import ReferenceBasedDetectionLoss, create_loss_fn
+from src.losses.combined_loss import ReferenceBasedDetectionLoss, create_loss_fn
 
 
 class TestCombinedLoss:
@@ -54,7 +54,7 @@ class TestCombinedLoss:
         pred_bboxes = torch.rand(batch_size, 4) * 100
         pred_bboxes[:, 2:] = pred_bboxes[:, :2] + torch.rand(batch_size, 2) * 50
         pred_cls_logits = torch.randn(batch_size, num_classes)
-        pred_dfl_dist = torch.randn(batch_size, 4 * (reg_max + 1))
+        pred_dfl_dist = torch.randn(batch_size, 4 * reg_max)
         
         # Create dummy targets
         target_bboxes = torch.rand(batch_size, 4) * 100
@@ -102,7 +102,7 @@ class TestCombinedLoss:
         pred_bboxes = torch.rand(batch_size, 4) * 100
         pred_bboxes[:, 2:] = pred_bboxes[:, :2] + torch.rand(batch_size, 2) * 50
         pred_cls_logits = torch.randn(batch_size, num_classes)
-        pred_dfl_dist = torch.randn(batch_size, 4 * (reg_max + 1))
+        pred_dfl_dist = torch.randn(batch_size, 4 * reg_max)
         target_bboxes = torch.rand(batch_size, 4) * 100
         target_bboxes[:, 2:] = target_bboxes[:, :2] + torch.rand(batch_size, 2) * 50
         target_cls = torch.randint(0, 2, (batch_size, num_classes)).float()
@@ -162,7 +162,7 @@ class TestCombinedLoss:
         # Create model parameters to simulate network output
         bbox_params = torch.nn.Parameter(torch.rand(batch_size, 4) * 100)
         cls_params = torch.nn.Parameter(torch.randn(batch_size, num_classes))
-        dfl_params = torch.nn.Parameter(torch.randn(batch_size, 4 * (reg_max + 1)))
+        dfl_params = torch.nn.Parameter(torch.randn(batch_size, 4 * reg_max))
         query_params = torch.nn.Parameter(torch.randn(batch_size, feature_dim))
         proto_params = torch.nn.Parameter(torch.randn(num_prototypes, feature_dim))
         
@@ -235,7 +235,7 @@ class TestCombinedLoss:
         pred_bboxes = torch.rand(batch_size, 4) * 100
         pred_bboxes[:, 2:] = pred_bboxes[:, :2] + torch.rand(batch_size, 2) * 50
         pred_cls_logits = torch.randn(batch_size, num_classes)
-        pred_dfl_dist = torch.randn(batch_size, 4 * (reg_max + 1))
+        pred_dfl_dist = torch.randn(batch_size, 4 * reg_max)
         target_bboxes = torch.rand(batch_size, 4) * 100
         target_bboxes[:, 2:] = target_bboxes[:, :2] + torch.rand(batch_size, 2) * 50
         target_cls = torch.randint(0, 2, (batch_size, num_classes)).float()
@@ -374,7 +374,7 @@ class TestTripletLossIntegration:
         # Detection predictions
         pred_bboxes = torch.rand(batch_size, 4)
         pred_cls_logits = torch.randn(batch_size, num_classes)
-        pred_dfl_dist = torch.softmax(torch.randn(batch_size, 4 * (reg_max + 1)), dim=-1)  # 4 coords * (reg_max+1) bins
+        pred_dfl_dist = torch.softmax(torch.randn(batch_size, 4 * reg_max), dim=-1)  # 4 coords * (reg_max) bins
         
         # Targets
         target_bboxes = torch.rand(batch_size, 4)
@@ -432,7 +432,7 @@ class TestTripletLossIntegration:
         # Detection predictions
         pred_bboxes = torch.rand(batch_size, 4)
         pred_cls_logits = torch.randn(batch_size, num_classes)
-        pred_dfl_dist = torch.softmax(torch.randn(batch_size, 4 * (reg_max + 1)), dim=-1)  # 4 coords * (reg_max+1) bins
+        pred_dfl_dist = torch.softmax(torch.randn(batch_size, 4 * reg_max), dim=-1)  # 4 coords * (reg_max) bins
         
         # Targets
         target_bboxes = torch.rand(batch_size, 4)
@@ -481,7 +481,7 @@ class TestTripletLossIntegration:
         # Detection predictions (with gradients)
         pred_bboxes = torch.rand(batch_size, 4, requires_grad=True)
         pred_cls_logits = torch.randn(batch_size, num_classes, requires_grad=True)
-        pred_dfl_dist = torch.softmax(torch.randn(batch_size, 4 * (reg_max + 1), requires_grad=True), dim=-1)
+        pred_dfl_dist = torch.softmax(torch.randn(batch_size, 4 * reg_max, requires_grad=True), dim=-1)
         
         # Targets
         target_bboxes = torch.rand(batch_size, 4)
@@ -540,7 +540,7 @@ class TestTripletLossIntegration:
         # Only detection + contrastive (no triplet inputs)
         pred_bboxes = torch.rand(batch_size, 4)
         pred_cls_logits = torch.randn(batch_size, num_classes)
-        pred_dfl_dist = torch.softmax(torch.randn(batch_size, 4 * (reg_max + 1)), dim=-1)  # 4 coords * (reg_max+1) bins
+        pred_dfl_dist = torch.softmax(torch.randn(batch_size, 4 * reg_max), dim=-1)  # 4 coords * (reg_max) bins
         
         target_bboxes = torch.rand(batch_size, 4)
         target_cls_indices = torch.randint(0, num_classes, (batch_size,))

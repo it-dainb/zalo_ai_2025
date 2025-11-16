@@ -14,8 +14,8 @@ reg_max = 16
 proto_boxes_list = []
 proto_sim_list = []
 for stride, h_dim in zip([4, 8, 16, 32], [160, 80, 40, 20]):
-    # Boxes: (B, 68, H, W)
-    boxes = torch.randn(batch_size, 4*(reg_max+1), h_dim, h_dim, device=device)
+    # Boxes: (B, 64, H, W) - FIXED: use 4*reg_max instead of 4*(reg_max+1)
+    boxes = torch.randn(batch_size, 4*reg_max, h_dim, h_dim, device=device)
     proto_boxes_list.append(boxes)
     
     # Similarity: (B, K, H, W) where K=4 (n_way=4)

@@ -33,7 +33,7 @@ def test_loss_compatibility():
     
     for stride in strides:
         H = W = 640 // stride
-        proto_boxes_list.append(torch.randn(batch_size, 4 * (reg_max + 1), H, W, device=device))
+        proto_boxes_list.append(torch.randn(batch_size, 4 * reg_max, H, W, device=device))
         proto_sim_list.append(torch.randn(batch_size, num_classes, H, W, device=device))
     
     # Create dummy ground truth targets
@@ -106,7 +106,7 @@ def test_loss_compatibility():
     # Check pred_dfl_dist
     pred_dfl = loss_inputs['pred_dfl_dist']
     target_dfl = loss_inputs['target_dfl']
-    expected_dfl_dim = 4 * (reg_max + 1)
+    expected_dfl_dim = 4 * reg_max  # FIXED: use reg_max, not reg_max+1
     checks.append(('pred_dfl_dist has correct dimension',
                    pred_dfl.shape[-1] == expected_dfl_dim))
     checks.append(('target_dfl shape[-1] == 4',
@@ -172,7 +172,7 @@ def test_loss_compatibility():
     print(f"  - Tensor shapes match loss function expectations")
     print(f"  - WIoU expects: pred_bboxes (M, 4) xyxy ✓")
     print(f"  - BCE expects: pred_cls_logits (M, K) logits ✓")
-    print(f"  - DFL expects: pred_dfl_dist (M, 4×(reg_max+1)) ✓")
+    print(f"  - DFL expects: pred_dfl_dist (M, 4×reg_max) ✓")  # FIXED: 4*reg_max, not 4*(reg_max+1)
     print(f"  - All losses compute successfully ✓")
     print(f"  - All losses are non-zero ✓")
     print("="*70 + "\n")

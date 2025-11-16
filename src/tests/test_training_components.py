@@ -73,7 +73,7 @@ class TestLossComponents:
         loss_fn = DFLoss(reg_max=16).to(device)
         
         # Create dummy predictions and targets
-        pred_dist = torch.randn(10, 17 * 4).to(device)  # 17 = reg_max + 1
+        pred_dist = torch.randn(10, 16 * 4).to(device)  # 17 = reg_max
         target_boxes = torch.randn(10, 4).to(device)
         
         try:

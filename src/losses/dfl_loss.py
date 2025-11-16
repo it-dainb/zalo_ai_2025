@@ -55,6 +55,10 @@ class DFLoss(nn.Module):
         batch_size = pred_dist.shape[0]
         pred_dist = pred_dist.reshape(batch_size, 4, self.reg_max + 1)
         
+        # CRITICAL: Clamp pred_dist BEFORE softmax to prevent gradient explosion
+        # Softmax gradient can explode even with moderate inputs, causing NaN backprop
+        pred_dist = torch.clamp(pred_dist, min=-10.0, max=10.0)
+        
         # Clamp targets to valid range
         target = torch.clamp(target, min=0, max=self.reg_max - 1e-6)
         
@@ -113,6 +117,9 @@ class DFLoss(nn.Module):
         """
         batch_size = pred_dist.shape[0]
         pred_dist = pred_dist.reshape(batch_size, 4, self.reg_max + 1)
+        
+        # CRITICAL: Clamp pred_dist BEFORE softmax to prevent gradient explosion
+        pred_dist = torch.clamp(pred_dist, min=-10.0, max=10.0)
         
         # Apply softmax
         pred_dist = F.softmax(pred_dist, dim=-1)

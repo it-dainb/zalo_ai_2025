@@ -689,8 +689,9 @@ def main():
         trainer.load_checkpoint(args.resume)
     
     # Watch model with wandb (optional, logs gradients and parameters)
+    # Note: log='parameters' avoids gradient logging which can crash with None gradients in few-shot learning
     if args.use_wandb and WANDB_AVAILABLE:
-        wandb.watch(model, log='all', log_freq=100, log_graph=True)
+        wandb.watch(model, log='parameters', log_freq=100, log_graph=False)
     
     # Train with optional triplet loader
     trainer.train(

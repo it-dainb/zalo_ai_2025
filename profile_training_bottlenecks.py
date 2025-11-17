@@ -62,56 +62,56 @@ class TimingContext:
 
 
 def profile_model_components(model, batch, device):
-    """Profile individual model components."""
+    """Profile individual model components separately."""
     timings = defaultdict(list)
     
-    # Prepare inputs
-    support_images = batch['support_images']
-    query_images = batch['query_images']
-    N, K, C, H, W = support_images.shape
-    support_flat = support_images.reshape(N * K, C, H, W)
+    query_images = batch['query_images'].to(device)
+    support_images = batch['support_images'].to(device)
+    B, C, H, W = query_images.shape
+    N = batch['n_way']
+    K = batch['n_support']
     
-    # 1. Profile DINOv3 encoding (support images)
-    with TimingContext('dino_support_encoding', timings):
+    # 1. Profile DINOv3 support encoder (K times for K support images)
+    # Flatten N*K support images
+    support_flat = support_images.view(N * K, C, 256, 256)
+    
+    with TimingContext('dinov3_support_encoding', timings):
         support_features = model.support_encoder(support_flat)
     
-    # 2. Profile prototype averaging
-    with TimingContext('prototype_averaging', timings):
-        prototype = support_features['prototype'].reshape(N, K, -1).mean(dim=1)
-        support_scales = {
-            'p2': support_features['p2'].reshape(N, K, -1).mean(dim=1),
-            'p3': support_features['p3'].reshape(N, K, -1).mean(dim=1),
-            'p4': support_features['p4'].reshape(N, K, -1).mean(dim=1),
-            'p5': support_features['p5'].reshape(N, K, -1).mean(dim=1),
-        }
+    # 2. Pre-compute support prototypes (average K samples per class)
+    # This simulates what happens in set_reference_images()
+    with TimingContext('support_prototype_averaging', timings):
+        model.set_reference_images(support_flat, average_prototypes=True, n_way=N, n_support=K)
     
-    # Cache support features
-    model.set_reference_images(support_flat, average_prototypes=True, n_way=N, n_support=K)
-    
-    # 3. Profile DINOv3 encoding (query images) - should use cache
-    with TimingContext('dino_query_encoding', timings):
-        query_features_dino = model.support_encoder(query_images)
-    
-    # 4. Profile YOLOv8 backbone
+    # 3. Profile YOLOv8 backbone on query images
     with TimingContext('yolov8_backbone', timings):
         query_features_yolo = model.backbone(query_images)
     
-    # 5. Profile PSALM fusion
+    # 4. Profile PSALM fusion (scs_fusion is the actual attribute name)
+    # Note: Support features are already cached from step 2
     with TimingContext('psalm_fusion', timings):
-        fused_features = model.fusion(
-            yolo_features=query_features_yolo,
-            dino_features=query_features_dino,
+        fused_features = model.scs_fusion(
+            query_features_yolo,
+            model._cached_support_features,
         )
     
-    # 6. Profile detection heads
-    with TimingContext('standard_head', timings):
-        standard_outputs = model.standard_head(fused_features)
+    # 5. Profile detection head (dual head handles both standard and prototype)
+    # Prepare prototypes for detection head
+    prototypes = {
+        'p2': model._cached_support_features['p2'],
+        'p3': model._cached_support_features['p3'],
+        'p4': model._cached_support_features['p4'],
+        'p5': model._cached_support_features['p5'],
+    }
     
-    with TimingContext('prototype_head', timings):
-        prototype_outputs = model.prototype_head(
-            query_features=fused_features,
-            support_prototypes=[support_scales[f'p{i}'] for i in range(2, 6)],
-        )
+    # Clamp fused features (as done in actual model)
+    fused_features_clamped = {
+        scale: torch.clamp(feat, min=-10.0, max=10.0)
+        for scale, feat in fused_features.items()
+    }
+    
+    with TimingContext('detection_head_dual', timings):
+        detections = model.detection_head(fused_features_clamped, prototypes, mode='dual')
     
     return timings
 

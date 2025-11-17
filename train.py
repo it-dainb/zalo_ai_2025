@@ -149,6 +149,8 @@ def parse_args():
     # Training settings
     parser.add_argument('--mixed_precision', action='store_true', default=True,
                         help='Use automatic mixed precision')
+    parser.add_argument('--compile', action='store_true', default=False,
+                        help='Enable torch.compile() for 20-30%% speedup (PyTorch 2.0+)')
     parser.add_argument('--num_workers', type=int, default=1,
                         help='Number of data loading workers (reduced to 1 to prevent OOM)')
     parser.add_argument('--checkpoint_dir', type=str, default='./checkpoints',
@@ -632,6 +634,19 @@ def main():
     
     # Create model
     model = create_model(args)
+    
+    # Optional: Compile model with torch.compile() for 20-30% speedup (PyTorch 2.0+)
+    if args.compile and hasattr(torch, 'compile'):
+        print("\n" + "="*60)
+        print("Compiling model with torch.compile()...")
+        print("="*60)
+        try:
+            model = torch.compile(model, mode='reduce-overhead')
+            print("✓ Model compiled successfully (expect 20-30% speedup)")
+        except Exception as e:
+            print(f"⚠ torch.compile() failed: {e}")
+            print("  Continuing with uncompiled model")
+        print("="*60 + "\n")
     
     # Create loss function
     loss_fn = create_loss_fn(args)

@@ -40,16 +40,18 @@ class WIoULoss(nn.Module):
             - True: monotonic FM (v3, recommended)
             - False: non-monotonic FM (v1)
         eps (float): Small value to avoid division by zero
+        smooth_focusing (bool): Apply smoothing to reduce noise (recommended for few-shot)
     """
     
     momentum = 1e-2  # For moving average
     alpha = 1.7      # For non-monotonous mode
     delta = 2.7      # For non-monotonous mode
     
-    def __init__(self, monotonous=True, eps=1e-7):
+    def __init__(self, monotonous=True, eps=1e-7, smooth_focusing=False):
         super().__init__()
         self.monotonous = monotonous
         self.eps = eps
+        self.smooth_focusing = smooth_focusing
         # Moving average of IoU loss (initialized to 1.0)
         self.register_buffer('iou_mean', torch.tensor(1.0))
     
@@ -155,7 +157,18 @@ class WIoULoss(nn.Module):
         if self.monotonous:
             # Monotonous focusing (WIoU v3): sqrt(beta)
             # Increases gradient for hard samples (high IoU loss)
-            loss = loss * beta.sqrt()
+            if self.smooth_focusing:
+                # Apply smooth focusing: reduce variance while keeping benefits
+                # Use tanh to bound the focusing factor, reducing extreme values
+                # Formula: loss * (1 + 0.5 * tanh(beta - 1))
+                # - When beta=1 (average sample): focusing_factor ≈ 1.0 (no change)
+                # - When beta>1 (hard sample): focusing_factor ≈ 1.5 (modest increase)
+                # - When beta<1 (easy sample): focusing_factor ≈ 0.5 (modest decrease)
+                focusing_factor = 1.0 + 0.5 * torch.tanh(beta - 1.0)
+                loss = loss * focusing_factor
+            else:
+                # Original WIoU v3: sqrt(beta) - more aggressive focusing
+                loss = loss * beta.sqrt()
         else:
             # Non-monotonous focusing (WIoU v1): beta / divisor
             # Uses alpha and delta hyperparameters

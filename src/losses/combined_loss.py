@@ -4,7 +4,7 @@ Integrates all loss components according to the recommended configuration
 from loss-functions-guide.md
 
 Loss Stack:
-- WIoU v3: 7.5 (bbox regression)
+- WIoU v3 / CIoU: 7.5 (bbox regression, selectable)
 - BCE: 0.5 (classification)
 - SupCon: 1.0 → 0.5 (prototype matching)
 - CPE: 0.5 → 0.3 (contrastive proposal encoding)
@@ -14,6 +14,7 @@ import torch
 import torch.nn as nn
 
 from .wiou_loss import WIoULoss
+from .ciou_loss import CIoULoss
 from .bce_loss import BCEClassificationLoss
 from .supervised_contrastive_loss import SupervisedContrastiveLoss, PrototypeContrastiveLoss
 from .cpe_loss import SimplifiedCPELoss
@@ -31,6 +32,7 @@ class ReferenceBasedDetectionLoss(nn.Module):
     
     Args:
         stage (int): Training stage (1, 2, or 3)
+        bbox_loss_type (str): Type of bbox loss - 'wiou' (default, dynamic focusing) or 'ciou' (Ultralytics standard, more stable)
         bbox_weight (float): Weight for bbox regression loss
         cls_weight (float): Weight for classification loss
         supcon_weight (float): Weight for supervised contrastive loss
@@ -38,26 +40,37 @@ class ReferenceBasedDetectionLoss(nn.Module):
         triplet_weight (float): Weight for triplet loss (Stage 3 only)
         use_batch_hard_triplet (bool): Use BatchHardTripletLoss instead of regular TripletLoss
         debug_mode (bool): Enable debug prints in SupCon losses
+        smooth_wiou (bool): Use smooth focusing in WIoU to reduce noise (recommended for few-shot)
     """
     
     def __init__(
         self,
         stage=1,
+        bbox_loss_type='wiou',
         bbox_weight=7.5,
         cls_weight=0.5,
         supcon_weight=1.0,
         cpe_weight=0.5,
         triplet_weight=0.2,
         use_batch_hard_triplet=False,
-        debug_mode=False
+        debug_mode=False,
+        smooth_wiou=False
     ):
         super().__init__()
         
         self.stage = stage
         self.debug_mode = debug_mode
+        self.bbox_loss_type = bbox_loss_type
         
         # Core detection losses (always active)
-        self.bbox_loss = WIoULoss(monotonous=True)
+        # Choose between WIoU (dynamic focusing, more aggressive) or CIoU (Ultralytics standard, more stable)
+        if bbox_loss_type == 'ciou':
+            self.bbox_loss = CIoULoss(eps=1e-7)
+        elif bbox_loss_type == 'wiou':
+            self.bbox_loss = WIoULoss(monotonous=True, smooth_focusing=smooth_wiou)
+        else:
+            raise ValueError(f"Invalid bbox_loss_type: {bbox_loss_type}. Must be 'wiou' or 'ciou'")
+        
         self.cls_loss = BCEClassificationLoss()
         
         # Contrastive losses (stage 2+)
@@ -158,7 +171,7 @@ class ReferenceBasedDetectionLoss(nn.Module):
         """
         losses = {}
         
-        # 1. Bounding box regression loss (WIoU)
+        # 1. Bounding box regression loss (WIoU or CIoU)
         if pred_bboxes.numel() > 0 and target_bboxes.numel() > 0:
             losses['bbox_loss'] = self.bbox_loss(pred_bboxes, target_bboxes)
         else:

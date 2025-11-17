@@ -8,20 +8,20 @@ python train.py \
     --n_way 2 \
     --n_query 4 \
     --num_aug 3 \
-    --n_episodes 500 \
+    --n_episodes 200 \
     --use_triplet \
-    --triplet_ratio 0.3 \
+    --triplet_ratio 0.2 \
     --negative_strategy mixed \
-    --triplet_batch_size 56 \
+    --triplet_batch_size 32 \
     --use_batch_hard_triplet \
     --lr 1e-4 \
     --weight_decay 0.01 \
     --gradient_accumulation 1 \
     --mixed_precision \
-    --num_workers 1 \
+    --num_workers 4 \
     --checkpoint_dir ./checkpoints/stage2 \
     --save_interval 5 \
-    --bbox_weight 2.0 \
+    --bbox_weight 2.5 \
     --cls_weight 0.5 \
     --supcon_weight 1.2 \
     --cpe_weight 0.6 \
@@ -34,4 +34,5 @@ python train.py \
     --wandb_entity it-dainb \
     --wandb_name stage_2 \
     --val_st_iou_cache  ./datasets/test/annotations/ \
-    --gradient_clip_norm 10.0
+    --gradient_clip_norm 1.0 \
+    --bbox_loss ciou

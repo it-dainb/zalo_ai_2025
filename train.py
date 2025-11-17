@@ -145,6 +145,10 @@ def parse_args():
                         help='Weight for CPE loss')
     parser.add_argument('--triplet_weight', type=float, default=0.2,
                         help='Weight for triplet loss (stage 3)')
+    parser.add_argument('--smooth_wiou', action='store_true', default=False,
+                        help='Use smooth focusing in WIoU to reduce bbox loss noise (recommended for few-shot)')
+    parser.add_argument('--bbox_loss', type=str, default='wiou', choices=['wiou', 'ciou'],
+                        help='Bbox loss type: wiou (dynamic focusing) or ciou (Ultralytics standard, more stable)')
     
     # Training settings
     parser.add_argument('--mixed_precision', action='store_true', default=True,
@@ -370,7 +374,7 @@ def create_loss_fn(args):
     Create multi-component loss function for reference-based detection.
     
     Loss Components:
-        - WIoU: Wise-IoU for bbox regression (dynamic gradient allocation)
+        - WIoU/CIoU: Bbox regression loss (selectable)
         - BCE: Binary cross-entropy for classification
         - SupCon: Supervised contrastive loss for feature learning
         - CPE: Cross-prototype enhancement for few-shot learning
@@ -382,6 +386,7 @@ def create_loss_fn(args):
     
     loss_fn = ReferenceBasedDetectionLoss(
         stage=args.stage,
+        bbox_loss_type=args.bbox_loss,
         bbox_weight=args.bbox_weight,
         cls_weight=args.cls_weight,
         supcon_weight=args.supcon_weight,
@@ -389,8 +394,10 @@ def create_loss_fn(args):
         triplet_weight=args.triplet_weight,
         use_batch_hard_triplet=args.use_batch_hard_triplet,
         debug_mode=args.debug,
+        smooth_wiou=args.smooth_wiou,
     )
     
+    print(f"BBox Loss Type: {args.bbox_loss.upper()}")
     print(f"Loss weights:")
     for key, value in loss_fn.weights.items():
         print(f"  {key}: {value}")

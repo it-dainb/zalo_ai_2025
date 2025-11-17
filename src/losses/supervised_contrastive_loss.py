@@ -49,7 +49,7 @@ class SupervisedContrastiveLoss(nn.Module):
         
         Args:
             features (torch.Tensor): Feature embeddings [N, D]
-                Should be L2-normalized
+                Will be L2-normalized internally for stability
             labels (torch.Tensor): Class labels [N]
             mask (torch.Tensor, optional): Contrastive mask [N, N]
                 If provided, overrides automatic mask from labels
@@ -66,6 +66,12 @@ class SupervisedContrastiveLoss(nn.Module):
                 print(f"⚠️ SupCon INPUT: features has NaN/Inf!")
                 print(f"  features range: [{features.min():.6f}, {features.max():.6f}]")
             return torch.tensor(0.0, device=device, requires_grad=True)
+        
+        # CRITICAL: Normalize features to unit length for contrastive learning
+        # This ensures cosine similarity is computed correctly and prevents
+        # gradient instability from magnitude differences in mixed precision training
+        # Following the same pattern as TripletLoss (loss_utils.py:609-614)
+        features = F.normalize(features, p=2, dim=1, eps=1e-8)
         
         # CRITICAL FIX: Use F.cosine_similarity which is more numerically stable
         # than manual normalization + matmul in mixed precision training
@@ -177,8 +183,9 @@ class PrototypeContrastiveLoss(nn.Module):
         
         Args:
             query_features (torch.Tensor): Query embeddings [N, D]
+                Will be L2-normalized internally
             prototypes (torch.Tensor): Class prototypes [K, D]
-                where K is number of classes
+                Will be L2-normalized internally
             labels (torch.Tensor): Query labels [N] (indices into prototypes)
             
         Returns:
@@ -195,6 +202,12 @@ class PrototypeContrastiveLoss(nn.Module):
             if self.debug_mode:
                 print(f"⚠️ PrototypeContrastive INPUT: prototypes has NaN/Inf!")
             return torch.tensor(0.0, device=device, requires_grad=True)
+        
+        # CRITICAL: Normalize both query and prototype features to unit length
+        # This ensures cosine similarity is computed correctly and prevents
+        # gradient instability from magnitude differences in mixed precision training
+        query_features = F.normalize(query_features, p=2, dim=1, eps=1e-8)
+        prototypes = F.normalize(prototypes, p=2, dim=1, eps=1e-8)
         
         # CRITICAL FIX: Use cosine_similarity which is more numerically stable
         # than manual normalization + matmul in mixed precision training

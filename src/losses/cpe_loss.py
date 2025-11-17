@@ -1,9 +1,20 @@
 """
+⚠️ DEPRECATED: This loss has been removed from the training pipeline. ⚠️
+
 Contrastive Proposal Encoding (CPE) Loss
 Paper: "FSCE: Few-Shot Object Detection via Contrastive Proposal Encoding" (CVPR 2021)
 https://arxiv.org/abs/2103.05950
 
-Key Features:
+REASON FOR DEPRECATION:
+- Very low contribution (2-4% of total loss) in our training runs
+- Architectural mismatch: FSCE designed for Faster R-CNN with RPN, we use YOLOv8 anchors
+- Simplified implementation missing key IoU augmentation from paper
+- Redundant with SupervisedContrastiveLoss (which has 10x higher contribution)
+- See docs/CPE_REMOVAL_SUMMARY.md for full analysis
+
+This file is kept for reference only. DO NOT USE in production training.
+
+Original Key Features:
 - Uses IoU-based augmentation for contrastive learning
 - Natural positive/negative pairs from RPN proposals
 - No extra augmentation needed

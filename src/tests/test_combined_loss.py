@@ -18,7 +18,7 @@ class TestCombinedLoss:
         assert loss_fn.weights['bbox'] == 7.5
         assert loss_fn.weights['cls'] == 0.5
         assert loss_fn.weights['supcon'] == 0.0  # No contrastive in stage 1
-        assert loss_fn.weights['cpe'] == 0.0
+        assert loss_fn.weights['triplet'] == 0.0
     
     def test_stage2_weights(self):
         """Test Stage 2 (few-shot meta) enables contrastive losses"""
@@ -27,7 +27,7 @@ class TestCombinedLoss:
         assert loss_fn.weights['bbox'] == 7.5
         assert loss_fn.weights['cls'] == 0.5
         assert loss_fn.weights['supcon'] == 1.0  # Full contrastive
-        assert loss_fn.weights['cpe'] == 0.5
+        assert loss_fn.weights['triplet'] == 0.2
     
     def test_stage3_weights(self):
         """Test Stage 3 (fine-tuning) reduces contrastive weights and adds triplet"""
@@ -36,8 +36,7 @@ class TestCombinedLoss:
         assert loss_fn.weights['bbox'] == 7.5
         assert loss_fn.weights['cls'] == 0.5
         assert loss_fn.weights['supcon'] == 0.5  # Reduced to 0.5
-        assert loss_fn.weights['cpe'] == 0.3  # Reduced to 0.3
-        assert loss_fn.weights['triplet'] == 0.2  # Added in stage 3
+        assert loss_fn.weights['triplet'] == 0.2  # Enabled in stage 2+
     
     def test_stage1_forward_basic(self):
         """Test Stage 1 forward pass (detection only)"""
@@ -69,7 +68,7 @@ class TestCombinedLoss:
         assert 'bbox_loss' in losses
         assert 'cls_loss' in losses
         assert 'supcon_loss' in losses
-        assert 'cpe_loss' in losses
+        assert 'triplet_loss' in losses
         
         # Check loss values are valid
         assert not torch.isnan(losses['total_loss'])
@@ -77,7 +76,7 @@ class TestCombinedLoss:
         
         # Check contrastive losses are zero in stage 1
         assert losses['supcon_loss'].item() == 0.0
-        assert losses['cpe_loss'].item() == 0.0
+        assert losses['triplet_loss'].item() == 0.0
     
     def test_stage2_forward_with_contrastive(self):
         """Test Stage 2 forward pass (with contrastive learning)"""
@@ -100,8 +99,6 @@ class TestCombinedLoss:
         query_features = torch.randn(batch_size, feature_dim)
         support_prototypes = torch.randn(num_prototypes, feature_dim)
         feature_labels = torch.randint(0, num_prototypes, (batch_size,))
-        proposal_features = torch.randn(batch_size * 4, feature_dim)
-        proposal_labels = torch.randint(-1, num_prototypes, (batch_size * 4,))
         
         # Forward pass
         losses = loss_fn(
@@ -111,9 +108,7 @@ class TestCombinedLoss:
             target_cls=target_cls,
             query_features=query_features,
             support_prototypes=support_prototypes,
-            feature_labels=feature_labels,
-            proposal_features=proposal_features,
-            proposal_labels=proposal_labels
+            feature_labels=feature_labels
         )
         
         # Check all losses are computed
@@ -239,13 +234,13 @@ class TestCombinedLoss:
             bbox_weight=10.0,
             cls_weight=1.0,
             supcon_weight=0.5,
-            cpe_weight=0.25
+            triplet_weight=0.25
         )
         
         assert loss_fn.weights['bbox'] == 10.0
         assert loss_fn.weights['cls'] == 1.0
         assert loss_fn.weights['supcon'] == 0.5
-        assert loss_fn.weights['cpe'] == 0.25
+        assert loss_fn.weights['triplet'] == 0.25
 
 
 class TestLossIntegration:
@@ -365,7 +360,6 @@ class TestTripletLossIntegration:
         assert 'bbox_loss' in losses
         assert 'cls_loss' in losses
         assert 'supcon_loss' in losses
-        assert 'cpe_loss' in losses
         assert 'triplet_loss' in losses
         assert 'total_loss' in losses
         

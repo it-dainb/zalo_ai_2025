@@ -3,11 +3,11 @@ Combined Reference-Based Detection Loss
 Integrates all loss components according to the recommended configuration
 from loss-functions-guide.md
 
-Loss Stack:
+Loss Stack (CPE Removed - see docs/CPE_REMOVAL_SUMMARY.md):
 - WIoU v3 / CIoU: 7.5 (bbox regression, selectable)
 - BCE: 0.5 (classification)
 - SupCon: 1.0 → 0.5 (prototype matching)
-- CPE: 0.5 → 0.3 (contrastive proposal encoding)
+- Triplet: 0.2 (Stage 3, prevents catastrophic forgetting)
 """
 
 import torch
@@ -17,7 +17,6 @@ from .wiou_loss import WIoULoss
 from .ciou_loss import CIoULoss
 from .bce_loss import BCEClassificationLoss
 from .supervised_contrastive_loss import SupervisedContrastiveLoss, PrototypeContrastiveLoss
-from .cpe_loss import SimplifiedCPELoss
 from .triplet_loss import TripletLoss, BatchHardTripletLoss
 
 
@@ -27,7 +26,7 @@ class ReferenceBasedDetectionLoss(nn.Module):
     
     Supports different training stages with adaptive loss weighting:
     - Stage 1 (Base pre-training): bbox + cls + dfl only
-    - Stage 2 (Few-shot meta): add supcon + cpe
+    - Stage 2 (Few-shot meta): add supcon + triplet
     - Stage 3 (Fine-tuning): reduce contrastive weights
     
     Args:
@@ -36,8 +35,7 @@ class ReferenceBasedDetectionLoss(nn.Module):
         bbox_weight (float): Weight for bbox regression loss
         cls_weight (float): Weight for classification loss
         supcon_weight (float): Weight for supervised contrastive loss
-        cpe_weight (float): Weight for CPE loss
-        triplet_weight (float): Weight for triplet loss (Stage 3 only)
+        triplet_weight (float): Weight for triplet loss (Stage 2+ only)
         use_batch_hard_triplet (bool): Use BatchHardTripletLoss instead of regular TripletLoss
         debug_mode (bool): Enable debug prints in SupCon losses
         smooth_wiou (bool): Use smooth focusing in WIoU to reduce noise (recommended for few-shot)
@@ -50,7 +48,6 @@ class ReferenceBasedDetectionLoss(nn.Module):
         bbox_weight=7.5,
         cls_weight=0.5,
         supcon_weight=1.0,
-        cpe_weight=0.5,
         triplet_weight=0.2,
         use_batch_hard_triplet=False,
         debug_mode=False,
@@ -76,7 +73,6 @@ class ReferenceBasedDetectionLoss(nn.Module):
         # Contrastive losses (stage 2+)
         self.supcon_loss = SupervisedContrastiveLoss(temperature=0.07, debug_mode=debug_mode)
         self.prototype_loss = PrototypeContrastiveLoss(temperature=0.07, debug_mode=debug_mode)
-        self.cpe_loss = SimplifiedCPELoss(temperature=0.1)
         
         # Triplet loss (stage 2+) - prevents catastrophic forgetting
         # Use cosine distance for normalized features (more stable than euclidean)
@@ -88,10 +84,10 @@ class ReferenceBasedDetectionLoss(nn.Module):
         # Set weights based on stage
         self.weights = self._get_stage_weights(
             stage, bbox_weight, cls_weight, 
-            supcon_weight, cpe_weight, triplet_weight
+            supcon_weight, triplet_weight
         )
     
-    def _get_stage_weights(self, stage, bbox_w, cls_w, supcon_w, cpe_w, triplet_w):
+    def _get_stage_weights(self, stage, bbox_w, cls_w, supcon_w, triplet_w):
         """Get loss weights for each training stage"""
         if stage == 1:
             # Stage 1: Base pre-training (no contrastive, no triplet)
@@ -99,7 +95,6 @@ class ReferenceBasedDetectionLoss(nn.Module):
                 'bbox': bbox_w,
                 'cls': cls_w,
                 'supcon': 0.0,
-                'cpe': 0.0,
                 'triplet': 0.0
             }
         elif stage == 2:
@@ -108,7 +103,6 @@ class ReferenceBasedDetectionLoss(nn.Module):
                 'bbox': bbox_w,
                 'cls': cls_w,
                 'supcon': supcon_w,
-                'cpe': cpe_w,
                 'triplet': triplet_w
             }
         else:  # stage == 3
@@ -117,7 +111,6 @@ class ReferenceBasedDetectionLoss(nn.Module):
                 'bbox': bbox_w,
                 'cls': cls_w,
                 'supcon': supcon_w * 0.5,
-                'cpe': cpe_w * 0.6,
                 'triplet': triplet_w
             }
     
@@ -133,8 +126,6 @@ class ReferenceBasedDetectionLoss(nn.Module):
         query_features=None,
         support_prototypes=None,
         feature_labels=None,
-        proposal_features=None,
-        proposal_labels=None,
         # Triplet loss (optional, Stage 3)
         triplet_anchors=None,
         triplet_positives=None,
@@ -156,8 +147,6 @@ class ReferenceBasedDetectionLoss(nn.Module):
             query_features (torch.Tensor, optional): Query features [M, D]
             support_prototypes (torch.Tensor, optional): Prototypes [K, D]
             feature_labels (torch.Tensor, optional): Labels for features [M]
-            proposal_features (torch.Tensor, optional): Proposal features [P, D]
-            proposal_labels (torch.Tensor, optional): Proposal labels [P]
             
             # Triplet loss (stage 3)
             triplet_anchors (torch.Tensor, optional): Anchor features [N, D]
@@ -210,19 +199,7 @@ class ReferenceBasedDetectionLoss(nn.Module):
         else:
             losses['supcon_loss'] = torch.tensor(0.0, device=pred_bboxes.device, requires_grad=True)
         
-        # 5. Contrastive Proposal Encoding Loss (stage 2+)
-        if self.weights['cpe'] > 0:
-            if proposal_features is not None and proposal_labels is not None:
-                losses['cpe_loss'] = self.cpe_loss(
-                    proposal_features,
-                    proposal_labels
-                )
-            else:
-                losses['cpe_loss'] = torch.tensor(0.0, device=pred_bboxes.device, requires_grad=True)
-        else:
-            losses['cpe_loss'] = torch.tensor(0.0, device=pred_bboxes.device, requires_grad=True)
-        
-        # 6. Triplet Loss (stage 3 only) - prevents catastrophic forgetting
+        # 5. Triplet Loss (stage 2+) - prevents catastrophic forgetting
         if self.weights['triplet'] > 0:
             if isinstance(self.triplet_loss, BatchHardTripletLoss):
                 # Batch hard triplet: needs embeddings and labels
@@ -253,7 +230,6 @@ class ReferenceBasedDetectionLoss(nn.Module):
             self.weights['bbox'] * losses['bbox_loss'] +
             self.weights['cls'] * losses['cls_loss'] +
             self.weights['supcon'] * losses['supcon_loss'] +
-            self.weights['cpe'] * losses['cpe_loss'] +
             self.weights['triplet'] * losses['triplet_loss']
         )
         
@@ -262,12 +238,12 @@ class ReferenceBasedDetectionLoss(nn.Module):
         return losses
     
     def set_stage(self, stage, bbox_weight=7.5, cls_weight=0.5,
-                  supcon_weight=1.0, cpe_weight=0.5, triplet_weight=0.2):
+                  supcon_weight=1.0, triplet_weight=0.2):
         """Update training stage and corresponding weights"""
         self.stage = stage
         self.weights = self._get_stage_weights(
             stage, bbox_weight, cls_weight, 
-            supcon_weight, cpe_weight, triplet_weight
+            supcon_weight, triplet_weight
         )
 
 

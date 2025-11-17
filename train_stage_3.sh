@@ -24,7 +24,6 @@ python train.py \
     --bbox_weight 7.5 \
     --cls_weight 0.5 \
     --supcon_weight 0.4 \
-    --cpe_weight 0.2 \
     --triplet_weight 0.6 \
     --yolo_weights ./models/base/yolov8-n.pt \
     --dinov3_model vit_small_patch16_dinov3.lvd1689m \

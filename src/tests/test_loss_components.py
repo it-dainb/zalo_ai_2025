@@ -1,6 +1,7 @@
 """
 Unit tests for all loss components
-Tests BCE, SupCon, and CPE losses
+Tests BCE and SupCon losses
+Note: CPE loss removed as of 2025-11 (see docs/CPE_REMOVAL_SUMMARY.md)
 """
 
 import torch
@@ -13,7 +14,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from losses.bce_loss import BCEClassificationLoss
 from losses.supervised_contrastive_loss import SupervisedContrastiveLoss, PrototypeContrastiveLoss
-from losses.cpe_loss import SimplifiedCPELoss
 
 
 class TestBCELoss:
@@ -134,55 +134,6 @@ class TestPrototypeContrastiveLoss:
         
         assert query_features.grad is not None
         assert prototypes.grad is not None
-
-
-class TestCPELoss:
-    """Test suite for Contrastive Proposal Encoding Loss"""
-    
-    def setup_method(self):
-        self.loss_fn = SimplifiedCPELoss(temperature=0.1)
-    
-    def test_foreground_only(self):
-        """Test only foreground proposals contribute to loss"""
-        features = torch.randn(10, 128)
-        labels = torch.tensor([-1, -1, 0, 0, 1, 1, -1, 2, 2, -1])  # -1 is background
-        
-        loss = self.loss_fn(features, labels)
-        assert not torch.isnan(loss)
-    
-    def test_no_foreground(self):
-        """Test returns 0 when no foreground proposals"""
-        features = torch.randn(5, 128)
-        labels = torch.tensor([-1, -1, -1, -1, -1])  # All background
-        
-        loss = self.loss_fn(features, labels)
-        assert loss.item() == 0.0
-    
-    def test_single_foreground(self):
-        """Test returns 0 when only one foreground proposal"""
-        features = torch.randn(5, 128)
-        labels = torch.tensor([-1, 0, -1, -1, -1])  # Only one foreground
-        
-        loss = self.loss_fn(features, labels)
-        assert loss.item() == 0.0
-    
-    def test_batch_processing(self):
-        """Test batch processing"""
-        features = torch.randn(50, 256)
-        labels = torch.randint(-1, 5, (50,))  # Mix of background and 5 classes
-        
-        loss = self.loss_fn(features, labels)
-        assert not torch.isnan(loss)
-    
-    def test_gradient_flow(self):
-        """Test gradients flow properly"""
-        features = torch.randn(20, 128, requires_grad=True)
-        labels = torch.randint(-1, 3, (20,))
-        
-        loss = self.loss_fn(features, labels)
-        if loss.item() > 0:  # Only if loss is computed
-            loss.backward()
-            assert features.grad is not None
 
 
 if __name__ == '__main__':

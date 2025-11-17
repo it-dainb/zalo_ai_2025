@@ -141,10 +141,8 @@ def parse_args():
                         help='Weight for classification loss')
     parser.add_argument('--supcon_weight', type=float, default=1.0,
                         help='Weight for supervised contrastive loss')
-    parser.add_argument('--cpe_weight', type=float, default=0.5,
-                        help='Weight for CPE loss')
     parser.add_argument('--triplet_weight', type=float, default=0.2,
-                        help='Weight for triplet loss (stage 3)')
+                        help='Weight for triplet loss (stage 2+)')
     parser.add_argument('--smooth_wiou', action='store_true', default=False,
                         help='Use smooth focusing in WIoU to reduce bbox loss noise (recommended for few-shot)')
     parser.add_argument('--bbox_loss', type=str, default='wiou', choices=['wiou', 'ciou'],
@@ -390,7 +388,6 @@ def create_loss_fn(args):
         bbox_weight=args.bbox_weight,
         cls_weight=args.cls_weight,
         supcon_weight=args.supcon_weight,
-        cpe_weight=args.cpe_weight,
         triplet_weight=args.triplet_weight,
         use_batch_hard_triplet=args.use_batch_hard_triplet,
         debug_mode=args.debug,
@@ -580,7 +577,6 @@ def main():
             'bbox_weight': args.bbox_weight,
             'cls_weight': args.cls_weight,
             'supcon_weight': args.supcon_weight,
-            'cpe_weight': args.cpe_weight,
             'triplet_weight': args.triplet_weight,
             
             # Triplet config

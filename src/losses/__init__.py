@@ -8,7 +8,6 @@ from .ciou_loss import CIoULoss
 from .bce_loss import BCEClassificationLoss
 from .dfl_loss import DFLoss
 from .supervised_contrastive_loss import SupervisedContrastiveLoss
-from .cpe_loss import CPELoss
 from .triplet_loss import TripletLoss, BatchHardTripletLoss, AdaptiveTripletLoss
 from .combined_loss import ReferenceBasedDetectionLoss
 
@@ -18,7 +17,6 @@ __all__ = [
     'BCEClassificationLoss',
     'DFLoss',
     'SupervisedContrastiveLoss',
-    'CPELoss',
     'TripletLoss',
     'BatchHardTripletLoss',
     'AdaptiveTripletLoss',

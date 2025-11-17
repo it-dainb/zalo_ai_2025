@@ -432,7 +432,7 @@ class TrainingDiagnostics:
         self.logger.info(f"   Total Loss: {total_loss:.4f}")
         
         # Individual components
-        components = ['bbox_loss', 'cls_loss', 'supcon_loss', 'cpe_loss', 'triplet_loss']
+        components = ['bbox_loss', 'cls_loss', 'supcon_loss', 'triplet_loss']
         
         for comp in components:
             if comp in losses_dict:

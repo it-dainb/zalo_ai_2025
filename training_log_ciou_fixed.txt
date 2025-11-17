@@ -1,0 +1,186 @@
+
+======================================================================
+YOLOv8n-RefDet Training (P2-P5 Architecture)
+======================================================================
+Stage: 2
+Epochs: 150
+Device: cuda
+Mixed Precision: True
+Episodic Training: 2-way 4-query
+Triplet Loss: Enabled
+======================================================================
+
+⚠ Warning: wandb requested but not installed. Install with: pip install wandb
+
+================================================================================
+AUGMENTATION CONFIG - STAGE2
+================================================================================
+
+IMAGE SIZES:
+  Query (YOLO):   640x640
+  Support (DINOv2): 512x512
+
+QUERY AUGMENTATIONS (Ultralytics):
+  Mosaic:         0.30
+  MixUp:          0.00
+  MixUp Alpha:    0.10
+
+SUPPORT AUGMENTATIONS:
+  Mode:           weak
+
+GEOMETRIC (AlbumentationsX):
+  Flip H:         0.30
+  Flip V:         0.00
+  Rotate 90° (D4): 0.00
+  Affine Scale:   0.90 to 1.10
+  Affine Rotate:  -5.0° to 5.0°
+  Affine Translate: 0.00 to 0.00
+  Affine Shear:   0.0° to 0.0°
+
+PHOTOMETRIC (AlbumentationsX):
+  HSV Hue:        -5.0° to 5.0°
+  HSV Saturation: -10.0 to 10.0
+  HSV Value:      -10.0 to 10.0
+  Brightness:     -0.10 to 0.10
+  Contrast:       0.90 to 1.10
+  Planckian Jitter: 0.00
+  Temp Range:     3000K to 9000K
+
+BLUR & NOISE (AlbumentationsX):
+  Blur:           0.00
+  Advanced Blur:  0.00
+  Blur Limit:     3 to 5
+  Noise:          0.00
+  Noise Std:      0.05 to 0.10
+
+ERASING (AlbumentationsX):
+  Probability:    0.00
+  Scale:          0.01 to 0.05
+  Ratio:          0.30 to 3.30
+
+TEMPORAL CONSISTENCY:
+  Window:         16 frames
+  Frame Stride:   1
+  Sequence Length: 8
+  Sequence Overlap: 4
+
+FEATURE SPACE:
+  Noise Std:      0.00
+  Dropout:        0.00
+
+================================================================================
+
+======================================================================
+Logging to file: checkpoints/stage2/training_stage2_2way_4query_triplet_bs4_20251117_215432.log
+Use --debug flag to also print logs to console
+======================================================================
+
+============================================================
+Creating data loaders...
+============================================================
+
+Loading annotations from ./datasets/train/annotations/annotations.json...
+
+Dataset initialized:
+  Mode: train
+  Classes: 12
+  Base frames: 16595
+  Augmentation multiplier: 3x
+  Total samples (with augmentation): 49785
+  Frame cache size: 500 frames (~300MB)
+  Support image cache: 200MB
+
+✓ Using manual n_episodes: 200
+
+
+✓ Creating triplet data loader...
+  Negative strategy: mixed
+  Triplet ratio: 0.2
+  Triplet batch size: 32
+
+TripletDataset initialized:
+  Negative strategy: mixed
+  Classes: 12
+  Samples per class: 100
+  Total samples per epoch: 1200
+  Triplet dataset size: 1200
+  Triplet batches per epoch: 38
+Loading annotations from ./datasets/test/annotations/annotations.json...
+
+Dataset initialized:
+  Mode: val
+  Classes: 2
+  Base frames: 3511
+  Augmentation multiplier: 1x
+  Total samples (with augmentation): 3511
+  Frame cache size: 500 frames (~300MB)
+  Support image cache: 200MB
+✓ Validation data loader created
+✓ Training data loader created
+  Episodes per epoch: 200
+  N-way: 2
+  Q-query: 4
+
+============================================================
+Creating YOLOv8n-RefDet (P2-P5 Architecture)...
+============================================================
+
+
+[1/4] Initializing DINOv3 Support Encoder...
+Loading DINO model: vit_small_patch16_dinov3.lvd1689m
+Frozen first 6 transformer blocks
+DINO Support Encoder initialized:
+  - Model: vit_small_patch16_dinov3.lvd1689m
+  - Feature dim: 384
+  - Input size: 256×256
+  - Output dims: P2=32, P3=64, P4=128, P5=256 (matching YOLOv8)
+  - Frozen layers: 6
+  - Total params: 21.87M
+  - Expected normalization: mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)
+  ✓ Using DINOv3 with rotary embeddings and LVD-1689M pretraining
+
+[2/4] Initializing YOLOv8 Backbone...
+Loading YOLOv8 model from: ./models/base/yolov8-n.pt
+WARNING ⚠️ GitHub assets check failure for https://api.github.com/repos/ultralytics/assets/releases/tags/v8.3.0: 403 rate limit exceeded
+WARNING ⚠️ GitHub assets check failure for https://api.github.com/repos/ultralytics/assets/releases/latest: 403 rate limit exceeded
+Traceback (most recent call last):
+  File "/mnt/data/HACKATHON/zalo_ai_2025/train.py", line 742, in <module>
+    main()
+  File "/mnt/data/HACKATHON/zalo_ai_2025/train.py", line 639, in main
+    model = create_model(args)
+            ^^^^^^^^^^^^^^^^^^
+  File "/mnt/data/HACKATHON/zalo_ai_2025/train.py", line 358, in create_model
+    model = YOLOv8nRefDet(
+            ^^^^^^^^^^^^^^
+  File "/mnt/data/HACKATHON/zalo_ai_2025/src/models/yolov8n_refdet.py", line 86, in __init__
+    self.backbone = YOLOv8BackboneExtractor(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/data/HACKATHON/zalo_ai_2025/src/models/yolov8_backbone.py", line 69, in __init__
+    yolo_wrapper = YOLO(str(weights_path), task='detect', verbose=False)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/itdainb/miniconda3/lib/python3.12/site-packages/ultralytics/models/yolo/model.py", line 81, in __init__
+    super().__init__(model=model, task=task, verbose=verbose)
+  File "/home/itdainb/miniconda3/lib/python3.12/site-packages/ultralytics/engine/model.py", line 149, in __init__
+    self._load(model, task=task)
+  File "/home/itdainb/miniconda3/lib/python3.12/site-packages/ultralytics/engine/model.py", line 288, in _load
+    self.model, self.ckpt = load_checkpoint(weights)
+                            ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/itdainb/miniconda3/lib/python3.12/site-packages/ultralytics/nn/tasks.py", line 1461, in load_checkpoint
+    ckpt, weight = torch_safe_load(weight)  # load ckpt
+                   ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/itdainb/miniconda3/lib/python3.12/site-packages/ultralytics/nn/tasks.py", line 1409, in torch_safe_load
+    ckpt = torch_load(file, map_location="cpu")
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/itdainb/miniconda3/lib/python3.12/site-packages/ultralytics/utils/patches.py", line 116, in torch_load
+    return torch.load(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/itdainb/miniconda3/lib/python3.12/site-packages/torch/serialization.py", line 1479, in load
+    with _open_file_like(f, "rb") as opened_file:
+         ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/itdainb/miniconda3/lib/python3.12/site-packages/torch/serialization.py", line 759, in _open_file_like
+    return _open_file(name_or_buffer, mode)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/itdainb/miniconda3/lib/python3.12/site-packages/torch/serialization.py", line 740, in __init__
+    super().__init__(open(name, mode))
+                     ^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: 'models/base/yolov8-n.pt'

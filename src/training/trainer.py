@@ -303,8 +303,19 @@ class RefDetTrainer:
                     self.logger.addHandler(file_handler)
                     print(f"Debug logging enabled. Logs will be saved to: {log_file}")
         
-        # Mixed precision scaler
-        self.scaler = GradScaler() if mixed_precision else None
+        # Mixed precision scaler with conservative settings to prevent gradient explosion
+        # CRITICAL: Use lower growth_factor and higher backoff_factor for stability
+        # Default is growth_factor=2.0, backoff_factor=0.5, but these can amplify NaN issues
+        if mixed_precision:
+            self.scaler = GradScaler(
+                init_scale=2**10,        # Start with moderate scale (default: 2^16)
+                growth_factor=1.5,       # Slower growth (default: 2.0)
+                backoff_factor=0.5,      # Standard backoff
+                growth_interval=1000,    # Less frequent growth (default: 2000)
+                enabled=True
+            )
+        else:
+            self.scaler = None
         
         # Training state
         self.epoch = 0

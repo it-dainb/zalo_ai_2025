@@ -39,7 +39,7 @@ from pathlib import Path
 from src.datasets.refdet_dataset import RefDetDataset, EpisodicBatchSampler
 from src.datasets.collate import RefDetCollator, TripletCollator
 from src.datasets.triplet_dataset import TripletDataset
-from models.yolo_refdet import YOLORefDet
+from src.models.yolo_refdet import YOLORefDet
 from src.losses.combined_loss import ReferenceBasedDetectionLoss
 from src.augmentations import get_stage_config, get_yolov8_augmentation_params, print_stage_config
 from src.training.trainer import RefDetTrainer

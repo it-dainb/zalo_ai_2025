@@ -6,21 +6,22 @@ Exports PyTorch model to ONNX with:
 - Opset 18 (latest stable)
 - ONNXSlim optimization
 - 100% accuracy validation
-- Support for multiple export modes (standard, dual)
+- Prototype-only detection outputs (8 tensors)
 - Dynamic batching support
+- Cached support features (query_image only input)
 
 Usage:
     # Export with default settings
     python onnx_export.py --checkpoint path/to/checkpoint.pth
     
-    # Export with specific mode
-    python onnx_export.py --checkpoint path/to/checkpoint.pth --mode dual
-    
-    # Export with dynamic axes
+    # Export with dynamic batch size
     python onnx_export.py --checkpoint path/to/checkpoint.pth --dynamic
     
     # Export with simplification only (no onnxslim)
     python onnx_export.py --checkpoint path/to/checkpoint.pth --no-slim
+    
+    # Export without validation
+    python onnx_export.py --checkpoint path/to/checkpoint.pth --no-validate
 """
 
 import argparse
@@ -42,34 +43,30 @@ from src.models import YOLORefDet
 
 class ONNXExportWrapper(nn.Module):
     """
-    Wrapper for ONNX export to handle multiple modes.
+    Wrapper for ONNX export to handle prototype detection outputs.
     
     This wrapper simplifies the model for ONNX export by:
     1. Flattening dictionary outputs to tuples
     2. Handling cached support features
     3. Providing cleaner input/output signatures
+    
+    Note: YOLORefDet only outputs prototype detections (no standard YOLOv8 head).
     """
     
     def __init__(
         self,
         model: YOLORefDet,
-        mode: str = 'dual',
         cache_support: bool = True,
     ):
         """
         Args:
             model: YOLOv8nRefDet model
-            mode: Export mode ('standard', 'dual')
-            cache_support: Whether to cache support features (for dual mode)
+            cache_support: Whether to cache support features
         """
         super().__init__()
         self.model = model
-        self.mode = mode
         self.cache_support = cache_support
-        
-        # For dual mode with caching, we need to encode support separately
-        if mode == 'dual' and cache_support:
-            self._support_cached = False
+        self._support_cached = False
     
     def forward(self, query_image: torch.Tensor, support_images: Optional[torch.Tensor] = None):
         """
@@ -77,49 +74,37 @@ class ONNXExportWrapper(nn.Module):
         
         Args:
             query_image: (B, 3, 640, 640)
-            support_images: (K, 3, 256, 256) for dual mode
+            support_images: (K, 3, 256, 256) or None to use cache
         
         Returns:
-            Tuple of outputs depending on mode:
-            - standard: (std_boxes_p2, std_boxes_p3, std_boxes_p4, std_boxes_p5,
-                        std_cls_p2, std_cls_p3, std_cls_p4, std_cls_p5)
-            - dual: same as standard + (proto_boxes_p2, ..., proto_sim_p2, ...)
+            Tuple of 8 outputs (prototype detection only):
+            - proto_boxes_p2, proto_boxes_p3, proto_boxes_p4, proto_boxes_p5 (4 tensors)
+            - proto_sim_p2, proto_sim_p3, proto_sim_p4, proto_sim_p5 (4 tensors)
         """
-        if self.mode == 'dual' and self.cache_support and support_images is not None:
+        if self.cache_support and support_images is not None:
             # Cache support features on first call
             if not self._support_cached:
                 self.model.set_reference_images(support_images, average_prototypes=True)
                 self._support_cached = True
         
-        # Forward through model
+        # Forward through model (always returns prototype outputs)
         outputs = self.model(
             query_image,
             support_images=support_images if not self.cache_support else None,
-            mode=self.mode,
             use_cache=self.cache_support,
         )
         
         # Flatten outputs to tuple (ONNX-friendly)
-        if self.mode == 'standard':
-            # 8 outputs (4 scales × 2 outputs)
-            return (
-                *outputs['standard_boxes'],  # 4 tensors
-                *outputs['standard_cls'],     # 4 tensors
-            )
-        elif self.mode == 'dual':
-            # 16 outputs (4 scales × 4 outputs)
-            return (
-                *outputs['standard_boxes'],   # 4 tensors
-                *outputs['standard_cls'],      # 4 tensors
-                *outputs['prototype_boxes'],   # 4 tensors
-                *outputs['prototype_sim'],     # 4 tensors
-            )
+        # 8 outputs (4 scales × 2 outputs)
+        return (
+            *outputs['prototype_boxes'],   # 4 tensors
+            *outputs['prototype_sim'],     # 4 tensors
+        )
 
 
 def export_to_onnx(
     model: YOLORefDet,
     output_path: str,
-    mode: str = 'dual',
     opset_version: int = 18,
     dynamic_axes: bool = False,
     simplify: bool = True,
@@ -132,7 +117,6 @@ def export_to_onnx(
     Args:
         model: YOLOv8nRefDet model
         output_path: Output ONNX file path
-        mode: Export mode ('standard', 'dual')
         opset_version: ONNX opset version (default: 18)
         dynamic_axes: Enable dynamic batch size
         simplify: Apply ONNX simplification
@@ -149,7 +133,6 @@ def export_to_onnx(
         print("\n" + "="*70)
         print(f"ONNX Export Configuration")
         print("="*70)
-        print(f"  Mode: {mode}")
         print(f"  Opset version: {opset_version}")
         print(f"  Dynamic axes: {dynamic_axes}")
         print(f"  Simplification: {simplify}")
@@ -157,15 +140,15 @@ def export_to_onnx(
         print(f"  Output: {output_path}")
         print("="*70 + "\n")
     
-    # Prepare wrapper
-    cache_support = (mode == 'dual')
-    wrapper = ONNXExportWrapper(model, mode=mode, cache_support=cache_support)
+    # Prepare wrapper (always cache support features for ONNX export)
+    cache_support = True
+    wrapper = ONNXExportWrapper(model, cache_support=cache_support)
     wrapper.eval()
     
     # Prepare dummy inputs
     batch_size = 1
     query_dummy = torch.randn(batch_size, 3, 640, 640, device=device)
-    support_dummy = torch.randn(3, 3, 256, 256, device=device) if mode == 'dual' else None
+    support_dummy = torch.randn(3, 3, 256, 256, device=device)
     
     # Cache support features if needed
     if cache_support and support_dummy is not None:
@@ -173,23 +156,13 @@ def export_to_onnx(
     
     # Define input/output names
     input_names = ['query_image']
-    if mode == 'dual' and not cache_support:
-        input_names.append('support_images')
     
-    # Output names depend on mode
+    # Output names: 8 prototype detection outputs (4 scales × 2 outputs)
     scales = ['p2', 'p3', 'p4', 'p5']
-    if mode == 'standard':
-        output_names = (
-            [f'std_boxes_{s}' for s in scales] +
-            [f'std_cls_{s}' for s in scales]
-        )
-    else:  # dual
-        output_names = (
-            [f'std_boxes_{s}' for s in scales] +
-            [f'std_cls_{s}' for s in scales] +
-            [f'proto_boxes_{s}' for s in scales] +
-            [f'proto_sim_{s}' for s in scales]
-        )
+    output_names = (
+        [f'proto_boxes_{s}' for s in scales] +
+        [f'proto_sim_{s}' for s in scales]
+    )
     
     # Dynamic axes configuration
     dynamic_axes_config = None
@@ -210,14 +183,16 @@ def export_to_onnx(
     with torch.no_grad():
         torch.onnx.export(
             wrapper,
-            (query_dummy,) if cache_support else (query_dummy, support_dummy),
+            (query_dummy,),  # Only query_image input (support cached)
             output_path,
             input_names=input_names,
             output_names=output_names,
             dynamic_axes=dynamic_axes_config,
             opset_version=opset_version,
             do_constant_folding=True,
-            verbose=False,
+            verify=True,
+            report=True,
+            external_data=False,
         )
     
     if verbose:
@@ -302,7 +277,6 @@ def export_to_onnx(
 def validate_accuracy(
     pytorch_model: YOLORefDet,
     onnx_path: str,
-    mode: str = 'dual',
     num_samples: int = 10,
     rtol: float = 1e-3,
     atol: float = 1e-5,
@@ -314,7 +288,6 @@ def validate_accuracy(
     Args:
         pytorch_model: Original PyTorch model
         onnx_path: Path to ONNX model
-        mode: Export mode
         num_samples: Number of test samples
         rtol: Relative tolerance
         atol: Absolute tolerance
@@ -333,9 +306,9 @@ def validate_accuracy(
     providers = ['CUDAExecutionProvider', 'CPUExecutionProvider'] if torch.cuda.is_available() else ['CPUExecutionProvider']
     ort_session = ort.InferenceSession(onnx_path, providers=providers)
     
-    # Prepare wrapper
-    cache_support = (mode == 'dual')
-    wrapper = ONNXExportWrapper(pytorch_model, mode=mode, cache_support=cache_support)
+    # Prepare wrapper (always cache support features)
+    cache_support = True
+    wrapper = ONNXExportWrapper(pytorch_model, cache_support=cache_support)
     wrapper.eval()
     
     max_errors = []
@@ -345,23 +318,18 @@ def validate_accuracy(
     for i in range(num_samples):
         # Generate random inputs
         query = torch.randn(1, 3, 640, 640, device=device)
-        support = torch.randn(3, 3, 256, 256, device=device) if mode == 'dual' else None
+        support = torch.randn(3, 3, 256, 256, device=device)
         
-        # Cache support if needed
-        if cache_support and support is not None and i == 0:
+        # Cache support features on first iteration
+        if i == 0:
             pytorch_model.set_reference_images(support, average_prototypes=True)
         
         # PyTorch inference
         with torch.no_grad():
-            if cache_support:
-                pytorch_outputs = wrapper(query)
-            else:
-                pytorch_outputs = wrapper(query, support)
+            pytorch_outputs = wrapper(query)
         
-        # ONNX inference
+        # ONNX inference (only query_image input)
         ort_inputs = {'query_image': query.cpu().numpy()}
-        if not cache_support and support is not None:
-            ort_inputs['support_images'] = support.cpu().numpy()
         
         onnx_outputs = ort_session.run(None, ort_inputs)
         
@@ -407,8 +375,6 @@ def main():
                         help='Path to model checkpoint (default: None, use pretrained weights)')
     parser.add_argument('--output', type=str, default='yolov8n_refdet.onnx',
                         help='Output ONNX file path (default: yolov8n_refdet.onnx)')
-    parser.add_argument('--mode', type=str, default='dual', choices=['standard', 'dual'],
-                        help='Export mode (default: dual)')
     parser.add_argument('--opset', type=int, default=18,
                         help='ONNX opset version (default: 18)')
     parser.add_argument('--dynamic', action='store_true',
@@ -434,10 +400,12 @@ def main():
     print("Loading YOLOv8n-RefDet model...")
     model = YOLORefDet(
         yolo_weights='yolov8n.pt',
-        nc_base=80,
+        dinov3_model='vit_small_patch16_dinov3.lvd1689m',
         freeze_yolo=False,
         freeze_dinov3=True,
         freeze_dinov3_layers=6,
+        conf_thres=0.25,
+        iou_thres=0.45,
     ).to(device)
     
     # Load checkpoint if provided
@@ -456,7 +424,6 @@ def main():
     onnx_path = export_to_onnx(
         model=model,
         output_path=args.output,
-        mode=args.mode,
         opset_version=args.opset,
         dynamic_axes=args.dynamic,
         simplify=not args.no_simplify,
@@ -469,7 +436,6 @@ def main():
         is_valid, error_stats = validate_accuracy(
             pytorch_model=model,
             onnx_path=onnx_path,
-            mode=args.mode,
             num_samples=args.num_samples,
             verbose=True,
         )
@@ -482,8 +448,8 @@ def main():
     print("✓ ONNX Export Complete")
     print("="*70)
     print(f"  Output: {onnx_path}")
-    print(f"  Mode: {args.mode}")
     print(f"  Size: {Path(onnx_path).stat().st_size / 1024 / 1024:.2f} MB")
+    print(f"  Outputs: 8 prototype detection tensors")
     print("="*70 + "\n")
 
 

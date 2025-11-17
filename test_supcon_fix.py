@@ -27,7 +27,6 @@ loss_fn = ReferenceBasedDetectionLoss(
     stage=2,
     bbox_weight=2.0,
     cls_weight=1.0,
-    dfl_weight=0.5,
     supcon_weight=1.2,  # ✅ Enable SupCon
     cpe_weight=0.0,
     triplet_weight=0.0,
@@ -106,6 +105,8 @@ for key in ['pred_bboxes', 'target_bboxes', 'query_features', 'support_prototype
 
 # Compute loss
 print('\nComputing loss...')
+# Remove diagnostic_data before passing to loss function
+diagnostic_data = loss_inputs.pop('diagnostic_data', None)
 losses = loss_fn(**loss_inputs)
 
 print('\n✅ Loss components:')

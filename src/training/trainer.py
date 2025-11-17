@@ -923,6 +923,8 @@ class RefDetTrainer:
                         batch=batch,
                         stage=self.loss_fn.stage,
                     )
+                    # Remove diagnostic_data before passing to loss function
+                    diagnostic_data = loss_inputs.pop('diagnostic_data', None)
                     losses = self.loss_fn(**loss_inputs)
                     loss = losses['total_loss']
                     losses_dict = {k: v.item() for k, v in losses.items() if k != 'total_loss'}

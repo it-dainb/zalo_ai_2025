@@ -21,7 +21,7 @@ import time
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from src.models.yolov8n_refdet import YOLOv8nRefDet
+from models.yolo_refdet import YOLOv8nRefDet
 
 
 class TestBasicInference:
@@ -40,7 +40,7 @@ class TestBasicInference:
         
         model = YOLOv8nRefDet(
             yolo_weights=weights_path,
-            nc_base=0,
+            
             freeze_yolo=False,
             freeze_dinov3=True,
             conf_thres=0.25,
@@ -59,7 +59,7 @@ class TestBasicInference:
             model.set_reference_images(support_images, average_prototypes=True)
             outputs = model(
                 query_image=query_image,
-                mode='prototype',
+                
                 use_cache=True,
             )
         
@@ -77,7 +77,7 @@ class TestBasicInference:
             model.set_reference_images(support_images, average_prototypes=True)
             outputs = model(
                 query_image=query_images,
-                mode='prototype',
+                
                 use_cache=True,
             )
         
@@ -92,7 +92,7 @@ class TestBasicInference:
             outputs = model(
                 query_image=query_image,
                 support_images=support_images,
-                mode='prototype',
+                
                 use_cache=False,
             )
         
@@ -116,28 +116,16 @@ class TestInferenceModes:
         
         model = YOLOv8nRefDet(
             yolo_weights=weights_path,
-            nc_base=80,  # Enable standard mode
             freeze_yolo=False,
             freeze_dinov3=True,
         ).to(device)
         model.eval()
         return model
     
+    @pytest.mark.skip(reason="Standard mode removed with DualDetectionHead removal")
     def test_standard_mode(self, model, device):
-        """Test standard mode (base classes only)"""
-        query_image = torch.randn(1, 3, 640, 640).to(device)
-        
-        with torch.no_grad():
-            outputs = model(
-                query_image=query_image,
-                mode='standard',
-            )
-        
-        assert 'standard_boxes' in outputs
-        assert 'standard_cls' in outputs
-        assert 'prototype_boxes' not in outputs
-        
-        print(f"✅ Standard mode inference successful")
+        """Test standard mode (base classes only) - DEPRECATED"""
+        pass
     
     def test_prototype_mode(self, model, device):
         """Test prototype mode (novel objects)"""
@@ -148,33 +136,17 @@ class TestInferenceModes:
             model.set_reference_images(support_images, average_prototypes=True)
             outputs = model(
                 query_image=query_image,
-                mode='prototype',
                 use_cache=True,
             )
         
         assert 'prototype_boxes' in outputs or 'pred_bboxes' in outputs
-        assert 'standard_boxes' not in outputs
         
         print(f"✅ Prototype mode inference successful")
     
+    @pytest.mark.skip(reason="Dual mode removed with DualDetectionHead removal")
     def test_dual_mode(self, model, device):
-        """Test dual mode (base + novel classes)"""
-        query_image = torch.randn(1, 3, 640, 640).to(device)
-        support_images = torch.randn(3, 3, 256, 256).to(device)
-        
-        with torch.no_grad():
-            model.set_reference_images(support_images, average_prototypes=True)
-            outputs = model(
-                query_image=query_image,
-                mode='dual',
-                use_cache=True,
-            )
-        
-        # Should have both outputs
-        assert ('standard_boxes' in outputs or 'prototype_boxes' in outputs or 
-                'pred_bboxes' in outputs)
-        
-        print(f"✅ Dual mode inference successful")
+        """Test dual mode (base + novel classes) - DEPRECATED"""
+        pass
 
 
 class TestReferenceCaching:
@@ -193,7 +165,7 @@ class TestReferenceCaching:
         
         model = YOLOv8nRefDet(
             yolo_weights=weights_path,
-            nc_base=0,
+            
         ).to(device)
         model.eval()
         return model
@@ -241,7 +213,7 @@ class TestReferenceCaching:
             for query in query_images:
                 outputs = model(
                     query_image=query,
-                    mode='prototype',
+                    
                     use_cache=True,
                 )
                 assert outputs is not None
@@ -265,7 +237,7 @@ class TestInferenceSpeed:
         
         model = YOLOv8nRefDet(
             yolo_weights=weights_path,
-            nc_base=0,
+            
         ).to(device)
         model.eval()
         return model
@@ -279,7 +251,7 @@ class TestInferenceSpeed:
         with torch.no_grad():
             model.set_reference_images(support_images, average_prototypes=True)
             for _ in range(5):
-                _ = model(query_image=query_image, mode='prototype', use_cache=True)
+                _ = model(query_image=query_image, use_cache=True)
         
         # Benchmark
         num_iterations = 10
@@ -287,7 +259,7 @@ class TestInferenceSpeed:
         
         with torch.no_grad():
             for _ in range(num_iterations):
-                _ = model(query_image=query_image, mode='prototype', use_cache=True)
+                _ = model(query_image=query_image, use_cache=True)
         
         if device.type == 'cuda':
             torch.cuda.synchronize()
@@ -315,7 +287,7 @@ class TestInferenceSpeed:
             # Warm-up
             with torch.no_grad():
                 for _ in range(3):
-                    _ = model(query_image=query_images, mode='prototype', use_cache=True)
+                    _ = model(query_image=query_images, use_cache=True)
             
             # Benchmark
             num_iterations = 10
@@ -323,7 +295,7 @@ class TestInferenceSpeed:
             
             with torch.no_grad():
                 for _ in range(num_iterations):
-                    _ = model(query_image=query_images, mode='prototype', use_cache=True)
+                    _ = model(query_image=query_images, use_cache=True)
             
             if device.type == 'cuda':
                 torch.cuda.synchronize()
@@ -351,7 +323,7 @@ class TestInferenceWithRealData:
         
         model = YOLOv8nRefDet(
             yolo_weights=weights_path,
-            nc_base=0,
+            
         ).to(device)
         model.eval()
         return model
@@ -403,7 +375,7 @@ class TestInferenceWithRealData:
             model.set_reference_images(support_tensor, average_prototypes=True)
             outputs = model(
                 query_image=query_image,
-                mode='prototype',
+                
                 use_cache=True,
             )
         

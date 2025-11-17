@@ -33,7 +33,7 @@ import numpy as np
 
 from src.datasets.refdet_dataset import RefDetDataset, EpisodicBatchSampler
 from src.datasets.collate import RefDetCollator
-from src.models.yolov8n_refdet import YOLOv8nRefDet
+from models.yolo_refdet import YOLOv8nRefDet
 from src.losses.combined_loss import ReferenceBasedDetectionLoss
 from src.training.loss_utils import prepare_loss_inputs
 from src.augmentations import get_stage_config

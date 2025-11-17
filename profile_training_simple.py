@@ -14,7 +14,7 @@ from pathlib import Path
 from collections import defaultdict
 from typing import Dict, List
 
-from src.models.yolov8n_refdet import YOLOv8nRefDet
+from models.yolo_refdet import YOLOv8nRefDet
 from src.datasets.refdet_dataset import RefDetDataset
 from src.datasets.collate import refdet_collate_fn
 

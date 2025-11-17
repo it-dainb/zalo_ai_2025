@@ -4,7 +4,7 @@ Integration Test for Triplet Training Pipeline
 
 Tests the complete triplet training integration:
 1. Model returns features when return_features=True
-2. Features have correct shapes (anchor: 384-dim, query: 256-dim)
+2. Features have correct shapes (anchor: 256-dim from DINOv3 triplet_proj, query: 256-dim from YOLOv8)
 3. Trainer can process triplet batches without errors
 4. Gradient flows from triplet loss to model parameters
 """
@@ -14,7 +14,7 @@ import torch
 import numpy as np
 from pathlib import Path
 
-from src.models.yolov8n_refdet import YOLOv8nRefDet
+from models.yolo_refdet import YOLOv8nRefDet
 from src.losses.combined_loss import ReferenceBasedDetectionLoss
 from src.training.trainer import RefDetTrainer
 from src.training.loss_utils import prepare_triplet_loss_inputs
@@ -34,7 +34,7 @@ class TestTripletIntegration:
         """Create model for testing."""
         model = YOLOv8nRefDet(
             yolo_weights='yolov8n.pt',
-            nc_base=0,
+            
             dinov3_model='vit_small_patch16_dinov3.lvd1689m',
             freeze_yolo=False,
             freeze_dinov3=True,
@@ -82,8 +82,8 @@ class TestTripletIntegration:
         batch_size = triplet_batch['positive_images'].shape[0]
         assert output['query_global_feat'].shape == (batch_size, 256), \
             f"Expected query features (B, 256), got {output['query_global_feat'].shape}"
-        assert output['support_global_feat'].shape == (batch_size, 384), \
-            f"Expected support features (B, 384), got {output['support_global_feat'].shape}"
+        assert output['support_global_feat'].shape == (batch_size, 256), \
+            f"Expected support features (B, 256) from DINOv3 triplet_proj, got {output['support_global_feat'].shape}"
     
     def test_feature_extraction_shapes(self, model, triplet_batch, device):
         """Test feature dimensions for triplet loss."""
@@ -111,9 +111,9 @@ class TestTripletIntegration:
         # Check dimensions
         batch_size = triplet_batch['positive_images'].shape[0]
         
-        # Anchor: DINOv3 features (384-dim)
-        assert anchor_features.shape == (batch_size, 384), \
-            f"Anchor features should be (B, 384) (DINOv3), got {anchor_features.shape}"
+        # Anchor: DINOv3 features (384→256 via triplet_proj)
+        assert anchor_features.shape == (batch_size, 256), \
+            f"Anchor features should be (B, 256) from DINOv3 triplet_proj, got {anchor_features.shape}"
         
         # Positive: YOLOv8 features (256-dim)
         assert positive_features.shape == (batch_size, 256), \

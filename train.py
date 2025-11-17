@@ -39,7 +39,7 @@ from pathlib import Path
 from src.datasets.refdet_dataset import RefDetDataset, EpisodicBatchSampler
 from src.datasets.collate import RefDetCollator, TripletCollator
 from src.datasets.triplet_dataset import TripletDataset
-from src.models.yolov8n_refdet import YOLOv8nRefDet
+from models.yolo_refdet import YOLOv8nRefDet
 from src.losses.combined_loss import ReferenceBasedDetectionLoss
 from src.augmentations import get_stage_config, get_yolov8_augmentation_params, print_stage_config
 from src.training.trainer import RefDetTrainer
@@ -357,7 +357,6 @@ def create_model(args):
     
     model = YOLOv8nRefDet(
         yolo_weights=args.yolo_weights,
-        nc_base=0,  # No base classes for novel object detection
         dinov3_model=args.dinov3_model,
         freeze_yolo=args.freeze_yolo,
         freeze_dinov3=args.freeze_dinov3,

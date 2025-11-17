@@ -19,7 +19,7 @@ from pathlib import Path
 from ultralytics import YOLO
 
 
-class YOLOv8BackboneExtractor(nn.Module):
+class YOLOBackboneExtractor(nn.Module):
     """
     YOLOv8n backbone feature extractor for query image processing.
     
@@ -229,7 +229,7 @@ def test_yolov8_backbone():
         weights_path = "yolov8n.pt"
     
     # Initialize extractor
-    extractor = YOLOv8BackboneExtractor(
+    extractor = YOLOBackboneExtractor(
         weights_path=weights_path,
         extract_scales=['p3', 'p4', 'p5'],
         freeze_backbone=False,
@@ -250,7 +250,7 @@ def test_yolov8_backbone():
     
     # Test different input size
     print("\n[Test 2] Different input size (1280x1280):")
-    extractor_large = YOLOv8BackboneExtractor(
+    extractor_large = YOLOBackboneExtractor(
         weights_path=weights_path,
         extract_scales=['p3', 'p4', 'p5'],
         input_size=1280,
@@ -292,7 +292,7 @@ def test_yolov8_backbone():
     
     # Test with frozen backbone
     print("\n[Test 5] Frozen backbone:")
-    extractor_frozen = YOLOv8BackboneExtractor(
+    extractor_frozen = YOLOBackboneExtractor(
         weights_path=weights_path,
         freeze_backbone=True,
     ).to(device)

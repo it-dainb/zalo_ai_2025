@@ -28,10 +28,10 @@ class TestTripletComponents:
         batch_size = 4
         
         # This mimics the combined_outputs dict created in trainer._forward_triplet_step()
-        # Lines 364-370: anchor from support_global_feat, pos+neg concatenated in query_global_feat
+        # Lines 1246-1249: anchor from support_global_feat (256-dim after triplet_proj), pos+neg concatenated in query_global_feat
         return {
-            'support_global_feat': torch.randn(batch_size, 384, device=device),  # Anchor features
-            'query_global_feat': torch.randn(batch_size * 2, 256, device=device),  # Positive + Negative concatenated
+            'support_global_feat': torch.randn(batch_size, 256, device=device),  # Anchor features (DINOv3 384->256 via triplet_proj)
+            'query_global_feat': torch.randn(batch_size * 2, 256, device=device),  # Positive + Negative concatenated (YOLOv8 256-dim)
         }
     
     @pytest.fixture
@@ -129,7 +129,7 @@ class TestTripletComponents:
         
         # Create model outputs with gradient tracking
         mock_outputs = {
-            'support_global_feat': torch.randn(batch_size, 384, device=device, requires_grad=True),
+            'support_global_feat': torch.randn(batch_size, 256, device=device, requires_grad=True),  # DINOv3 384->256 via triplet_proj
             'query_global_feat': torch.randn(batch_size * 2, feat_dim, device=device, requires_grad=True),
         }
         

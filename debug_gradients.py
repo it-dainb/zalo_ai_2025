@@ -2,7 +2,7 @@
 Debug script to check gradient flow in the model.
 """
 import torch
-from src.models.yolov8n_refdet import YOLOv8nRefDet
+from models.yolo_refdet import YOLOv8nRefDet
 
 # Create model
 model = YOLOv8nRefDet(

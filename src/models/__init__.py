@@ -16,14 +16,14 @@ __version__ = "0.2.0"
 __author__ = "Zalo AI Challenge 2025"
 
 from .dino_encoder import DINOSupportEncoder
-from .yolov8_backbone import YOLOv8BackboneExtractor
+from .yolo_backbone import YOLOBackboneExtractor
 from .psalm_fusion import PSALMFusion
-from .dual_head import DualDetectionHead, PrototypeDetectionHead, StandardDetectionHead
-from .yolov8n_refdet import YOLOv8nRefDet
+from .prototype_head import DualDetectionHead, PrototypeDetectionHead, StandardDetectionHead
+from .yolo_refdet import YOLOv8nRefDet
 
 __all__ = [
     "DINOSupportEncoder",
-    "YOLOv8BackboneExtractor",
+    "YOLOBackboneExtractor",
     "PSALMFusion",
     "DualDetectionHead",
     "PrototypeDetectionHead",

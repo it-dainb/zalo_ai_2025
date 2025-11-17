@@ -21,7 +21,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from src.datasets.refdet_dataset import RefDetDataset, EpisodicBatchSampler
 from src.datasets.collate import RefDetCollator
-from src.models.yolov8n_refdet import YOLOv8nRefDet
+from models.yolo_refdet import YOLOv8nRefDet
 from src.augmentations.augmentation_config import AugmentationConfig
 
 
@@ -110,7 +110,7 @@ class TestModelEvaluation:
         
         model = YOLOv8nRefDet(
             yolo_weights=weights_path,
-            nc_base=0,
+            
             freeze_yolo=False,
             freeze_dinov3=True,
         ).to(device)
@@ -130,7 +130,6 @@ class TestModelEvaluation:
             # Forward pass
             outputs = model(
                 query_image=query_image,
-                mode='prototype',
                 use_cache=True,
             )
         
@@ -148,7 +147,6 @@ class TestModelEvaluation:
             model.set_reference_images(support_images, average_prototypes=True)
             outputs = model(
                 query_image=query_images,
-                mode='prototype',
                 use_cache=True,
             )
         
@@ -183,7 +181,7 @@ class TestEvaluationPipeline:
         
         model = YOLOv8nRefDet(
             yolo_weights=weights_path,
-            nc_base=0,
+            
         ).to(device)
         model.eval()
         
@@ -243,7 +241,7 @@ class TestEvaluationPipeline:
         
         model = YOLOv8nRefDet(
             yolo_weights=weights_path,
-            nc_base=0,
+            
         ).to(device)
         model.eval()
         
@@ -318,7 +316,7 @@ class TestEvaluationPipeline:
         
         model = YOLOv8nRefDet(
             yolo_weights=weights_path,
-            nc_base=0,
+            
         ).to(device)
         
         try:

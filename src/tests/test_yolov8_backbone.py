@@ -21,7 +21,7 @@ from pathlib import Path
 # Add models directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from models.yolov8_backbone import YOLOv8BackboneExtractor
+from models.yolo_backbone import YOLOBackboneExtractor
 
 
 class TestYOLOv8Backbone:
@@ -42,7 +42,7 @@ class TestYOLOv8Backbone:
     @pytest.fixture
     def extractor(self, device, weights_path):
         """Create extractor instance for testing"""
-        model = YOLOv8BackboneExtractor(
+        model = YOLOBackboneExtractor(
             weights_path=weights_path,
             extract_scales=['p3', 'p4', 'p5'],
             freeze_backbone=False,
@@ -99,7 +99,7 @@ class TestYOLOv8Backbone:
         input_sizes = [320, 640, 1280]
         
         for size in input_sizes:
-            extractor = YOLOv8BackboneExtractor(
+            extractor = YOLOBackboneExtractor(
                 weights_path=weights_path,
                 extract_scales=['p3', 'p4', 'p5'],
                 input_size=size,
@@ -144,7 +144,7 @@ class TestYOLOv8Backbone:
     
     def test_frozen_backbone(self, device, weights_path):
         """Test frozen backbone has no trainable parameters"""
-        extractor_frozen = YOLOv8BackboneExtractor(
+        extractor_frozen = YOLOBackboneExtractor(
             weights_path=weights_path,
             freeze_backbone=True,
         ).to(device)
@@ -206,7 +206,7 @@ class TestYOLOv8Backbone:
     
     def test_hook_cleanup(self, device, weights_path):
         """Test that hooks are properly cleaned up"""
-        extractor = YOLOv8BackboneExtractor(
+        extractor = YOLOBackboneExtractor(
             weights_path=weights_path,
             extract_scales=['p3'],
         ).to(device)
@@ -222,7 +222,7 @@ class TestYOLOv8Backbone:
     def test_selective_scale_extraction(self, device, weights_path):
         """Test extracting only specific scales"""
         # Test with only P3
-        extractor_p3 = YOLOv8BackboneExtractor(
+        extractor_p3 = YOLOBackboneExtractor(
             weights_path=weights_path,
             extract_scales=['p3'],
         ).to(device)
@@ -274,7 +274,7 @@ class TestYOLOv8Backbone:
 def test_module_imports():
     """Test that module can be imported correctly"""
     try:
-        from models.yolov8_backbone import YOLOv8BackboneExtractor
+        from models.yolo_backbone import YOLOBackboneExtractor
         print("✅ Module import successful")
     except ImportError as e:
         pytest.fail(f"Failed to import module: {e}")

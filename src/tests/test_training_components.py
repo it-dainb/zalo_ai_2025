@@ -26,7 +26,7 @@ from losses.bce_loss import BCEClassificationLoss
 from losses.supervised_contrastive_loss import SupervisedContrastiveLoss
 from losses.triplet_loss import TripletLoss
 from training.trainer import RefDetTrainer
-from models.yolov8n_refdet import YOLOv8nRefDet
+from models.yolo_refdet import YOLOv8nRefDet
 
 
 class TestLossComponents:
@@ -115,7 +115,6 @@ class TestCombinedLoss:
             bbox_weight=7.5,
             cls_weight=0.5,
             supcon_weight=1.0,
-            cpe_weight=0.5,
             triplet_weight=0.2,
         ).to(device)
     
@@ -171,7 +170,7 @@ class TestOptimizer:
         
         return YOLOv8nRefDet(
             yolo_weights=weights_path,
-            nc_base=0,
+            
             freeze_yolo=False,
             freeze_dinov3=True,
         ).to(device)
@@ -247,7 +246,7 @@ class TestTrainer:
         
         return YOLOv8nRefDet(
             yolo_weights=weights_path,
-            nc_base=0,
+            
             freeze_yolo=False,
             freeze_dinov3=True,
         ).to(device)

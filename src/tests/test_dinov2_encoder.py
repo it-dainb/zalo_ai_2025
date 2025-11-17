@@ -36,7 +36,7 @@ class TestDINOv2Encoder:
         """Create encoder instance for testing (DINOv3)"""
         model = DINOSupportEncoder(
             model_name="vit_small_patch16_dinov3.lvd1689m",
-            output_dims=[64, 128, 256],  # Match YOLOv8n dimensions
+            output_dims=[32, 64, 128, 256],  # P2, P3, P4, P5 - Match YOLOv8n dimensions
             freeze_backbone=True,
             freeze_layers=6,
             input_size=256,
@@ -48,7 +48,7 @@ class TestDINOv2Encoder:
         """Test model loads correctly from timm"""
         assert encoder is not None
         assert encoder.feat_dim == 384, "ViT-Small should have 384-dim features"
-        assert encoder.output_dims == [64, 128, 256], "Should match YOLOv8n dimensions"
+        assert encoder.output_dims == [32, 64, 128, 256], "Should match YOLOv8n P2, P3, P4, P5 dimensions"
         print("✅ Model initialization successful")
     
     def test_single_image_forward(self, encoder, device):
@@ -60,12 +60,14 @@ class TestDINOv2Encoder:
         
         # Check output dictionary keys
         assert 'prototype' in output
+        assert 'p2' in output
         assert 'p3' in output
         assert 'p4' in output
         assert 'p5' in output
         
         # Check shapes - scale-specific dimensions matching YOLOv8n
         assert output['prototype'].shape == (1, 384)
+        assert output['p2'].shape == (1, 32)
         assert output['p3'].shape == (1, 64)
         assert output['p4'].shape == (1, 128)
         assert output['p5'].shape == (1, 256)
@@ -82,6 +84,7 @@ class TestDINOv2Encoder:
         
         # Check batch dimensions - scale-specific dimensions matching YOLOv8n
         assert output['prototype'].shape == (batch_size, 384)
+        assert output['p2'].shape == (batch_size, 32)
         assert output['p3'].shape == (batch_size, 64)
         assert output['p4'].shape == (batch_size, 128)
         assert output['p5'].shape == (batch_size, 256)
@@ -97,11 +100,13 @@ class TestDINOv2Encoder:
         
         # Check L2 norms (should be ~1.0) for each item in batch
         proto_norms = output['prototype'].norm(dim=-1)
+        p2_norms = output['p2'].norm(dim=-1)
         p3_norms = output['p3'].norm(dim=-1)
         p4_norms = output['p4'].norm(dim=-1)
         p5_norms = output['p5'].norm(dim=-1)
         
         assert torch.all(torch.abs(proto_norms - 1.0) < 1e-5), f"Prototype norms: {proto_norms}"
+        assert torch.all(torch.abs(p2_norms - 1.0) < 1e-5), f"P2 norms: {p2_norms}"
         assert torch.all(torch.abs(p3_norms - 1.0) < 1e-5), f"P3 norms: {p3_norms}"
         assert torch.all(torch.abs(p4_norms - 1.0) < 1e-5), f"P4 norms: {p4_norms}"
         assert torch.all(torch.abs(p5_norms - 1.0) < 1e-5), f"P5 norms: {p5_norms}"
@@ -134,6 +139,7 @@ class TestDINOv2Encoder:
         
         # Check shapes - scale-specific dimensions matching YOLOv8n
         assert avg_proto['prototype'].shape == (1, 384)
+        assert avg_proto['p2'].shape == (1, 32)
         assert avg_proto['p3'].shape == (1, 64)
         assert avg_proto['p4'].shape == (1, 128)
         assert avg_proto['p5'].shape == (1, 256)

@@ -11,7 +11,7 @@ sys.path.append(str(Path(__file__).parent))
 
 from src.datasets.refdet_dataset import RefDetDataset, EpisodicBatchSampler
 from src.datasets.collate import RefDetCollator
-from src.models.yolov8n_refdet import YOLOv8nRefDet
+from models.yolo_refdet import YOLOv8nRefDet
 from src.losses.combined_loss import ReferenceBasedDetectionLoss
 from src.augmentations.augmentation_config import AugmentationConfig
 
@@ -140,7 +140,6 @@ def test_model():
         
         model = YOLOv8nRefDet(
             yolo_weights='yolov8n.pt',
-            nc_base=0,
         )
         
         print(f"✓ Model created successfully")
@@ -154,7 +153,6 @@ def test_model():
             outputs = model(
                 query_image=query_img,
                 support_images=support_imgs,
-                mode='dual',
             )
         
         print(f"✓ Forward pass successful")

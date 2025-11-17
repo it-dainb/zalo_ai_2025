@@ -24,7 +24,7 @@ import time
 # Add models directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from models.yolov8n_refdet import YOLOv8nRefDet
+from models.yolo_refdet import YOLOv8nRefDet
 
 
 class TestEndToEnd:
@@ -47,7 +47,6 @@ class TestEndToEnd:
         """Create model instance for testing"""
         model = YOLOv8nRefDet(
             yolo_weights=weights_path,
-            nc_base=80,
             dinov3_model="vit_small_patch14_reg4_dinov2",
             freeze_yolo=False,
             freeze_dinov3=True,
@@ -74,42 +73,16 @@ class TestEndToEnd:
         
         print("✅ Model initialization successful")
     
-    def test_standard_mode(self, model, query_image):
-        """Test standard mode (no reference images)"""
-        with torch.no_grad():
-            outputs = model(query_image, mode='standard')
-        
-        # Should have standard outputs only
-        assert 'standard_boxes' in outputs
-        assert 'standard_cls' in outputs
-        assert 'prototype_boxes' not in outputs
-        
-        print("✅ Standard mode successful")
-    
     def test_prototype_mode_with_support(self, model, query_image, support_images):
         """Test prototype mode with on-the-fly support computation"""
         with torch.no_grad():
-            outputs = model(query_image, support_images, mode='prototype')
+            outputs = model(query_image, support_images)
         
-        # Should have prototype outputs only
+        # Should have prototype outputs
         assert 'prototype_boxes' in outputs
         assert 'prototype_sim' in outputs
-        assert 'standard_boxes' not in outputs
         
         print("✅ Prototype mode (on-the-fly) successful")
-    
-    def test_dual_mode(self, model, query_image, support_images):
-        """Test dual mode (both heads active)"""
-        with torch.no_grad():
-            outputs = model(query_image, support_images, mode='dual')
-        
-        # Should have both outputs
-        assert 'standard_boxes' in outputs
-        assert 'standard_cls' in outputs
-        assert 'prototype_boxes' in outputs
-        assert 'prototype_sim' in outputs
-        
-        print("✅ Dual mode successful")
     
     def test_support_caching(self, model, query_image, support_images):
         """Test support feature caching mechanism"""
@@ -121,7 +94,7 @@ class TestEndToEnd:
         
         # Use cache in forward pass
         with torch.no_grad():
-            outputs = model(query_image, mode='prototype', use_cache=True)
+            outputs = model(query_image, use_cache=True)
         
         assert 'prototype_boxes' in outputs
         
@@ -135,13 +108,13 @@ class TestEndToEnd:
         """Test that caching improves inference speed"""
         # Warm-up
         with torch.no_grad():
-            _ = model(query_image, support_images, mode='prototype')
+            _ = model(query_image, support_images)
         
         # Time without cache
         start = time.time()
         for _ in range(10):
             with torch.no_grad():
-                _ = model(query_image, support_images, mode='prototype', use_cache=False)
+                _ = model(query_image, support_images, use_cache=False)
         time_no_cache = time.time() - start
         
         # Cache support features
@@ -151,7 +124,7 @@ class TestEndToEnd:
         start = time.time()
         for _ in range(10):
             with torch.no_grad():
-                _ = model(query_image, mode='prototype', use_cache=True)
+                _ = model(query_image, use_cache=True)
         time_with_cache = time.time() - start
         
         print(f"  Without cache: {time_no_cache*100:.2f}ms (avg)")
@@ -173,10 +146,9 @@ class TestEndToEnd:
             query_batch = torch.randn(bs, 3, 640, 640).to(device)
             
             with torch.no_grad():
-                outputs = model(query_batch, mode='dual', use_cache=True)
+                outputs = model(query_batch, use_cache=True)
             
             # Check batch dimension
-            assert outputs['standard_boxes'][0].shape[0] == bs
             assert outputs['prototype_sim'][0].shape[0] == bs
         
         print(f"✅ Batch processing tested: {batch_sizes}")
@@ -194,7 +166,7 @@ class TestEndToEnd:
             
             # Inference
             with torch.no_grad():
-                outputs = model(query_image, mode='prototype', use_cache=True)
+                outputs = model(query_image, use_cache=True)
             
             assert 'prototype_boxes' in outputs
         
@@ -204,10 +176,11 @@ class TestEndToEnd:
         """Test model stays within parameter budget"""
         total_params = model.count_parameters()
         
-        # Current architecture: DINOv2(21.76M) + YOLOv8n(3.16M) + CHEAF(2.15M) + DualHead(7.03M) = 35.22M
-        expected_range = (30e6, 40e6)
+        # Updated architecture: DINOv2(21.94M) + YOLOv8n(3.16M) + PSALM(0.78M) + PrototypeHead(0.75M) = ~26.6M
+        # Much lighter after removing DualDetectionHead and using PSALM fusion
+        expected_range = (25e6, 30e6)
         assert expected_range[0] <= total_params <= expected_range[1], \
-            f"Params: {total_params/1e6:.2f}M (expected 30-40M)"
+            f"Params: {total_params/1e6:.2f}M (expected 25-30M)"
         
         # Should be well under 50M limit
         assert total_params < 50e6, \
@@ -241,7 +214,6 @@ class TestEndToEnd:
         with torch.no_grad():
             outputs = model.inference(
                 query_image,
-                mode='dual',
                 conf_thres=0.5,
                 iou_thres=0.45
             )
@@ -251,30 +223,13 @@ class TestEndToEnd:
         
         print("✅ Inference method successful")
     
-    def test_different_modes_consistency(self, model, query_image, support_images):
-        """Test that different modes produce consistent outputs"""
-        model.set_reference_images(support_images)
-        
-        with torch.no_grad():
-            # Standard mode
-            out_std = model(query_image, mode='standard')
-            
-            # Dual mode
-            out_dual = model(query_image, mode='dual', use_cache=True)
-        
-        # Standard outputs from dual mode should match standard-only mode
-        # (checking shapes, not exact values due to fusion differences)
-        assert len(out_std['standard_boxes']) == len(out_dual['standard_boxes'])
-        
-        print("✅ Mode consistency verified")
-    
     def test_error_handling_no_support(self, model, query_image):
-        """Test error handling when prototype mode lacks support images"""
+        """Test error handling when lacks support images"""
         model.clear_cache()
         
         with pytest.raises(ValueError):
             # Should raise error: no support images and no cache
-            model(query_image, mode='prototype', use_cache=True)
+            model(query_image, use_cache=True)
         
         print("✅ Error handling verified")
     
@@ -287,12 +242,10 @@ class TestEndToEnd:
         support_images = support_images.clone().requires_grad_(True)
         
         # Forward pass
-        outputs = model(query_image, support_images, mode='dual')
+        outputs = model(query_image, support_images)
         
         # Compute dummy loss
-        loss = sum(b.sum() for b in outputs['standard_boxes'])
-        loss += sum(c.sum() for c in outputs['standard_cls'])
-        loss += sum(s.sum() for s in outputs['prototype_sim'])
+        loss = sum(s.sum() for s in outputs['prototype_sim'])
         
         loss.backward()
         
@@ -322,7 +275,7 @@ class TestEndToEnd:
         model.set_reference_images(support_images)
         
         with torch.no_grad():
-            _ = model(query_image, mode='dual', use_cache=True)
+            _ = model(query_image, use_cache=True)
         
         # Check memory
         memory_allocated = torch.cuda.memory_allocated() / 1e9  # GB
@@ -343,7 +296,7 @@ class TestEndToEnd:
         # Warm-up
         for _ in range(5):
             with torch.no_grad():
-                _ = model(query_image, mode='dual', use_cache=True)
+                _ = model(query_image, use_cache=True)
         
         # Benchmark
         num_runs = 20
@@ -355,7 +308,7 @@ class TestEndToEnd:
             
             start = time.time()
             with torch.no_grad():
-                _ = model(query_image, mode='dual', use_cache=True)
+                _ = model(query_image, use_cache=True)
             
             if device.type == 'cuda':
                 torch.cuda.synchronize()
@@ -393,19 +346,22 @@ class TestEndToEnd:
             assert 'p4' in query_feats
             assert 'p5' in query_feats
             
-            # CHEAF Fusion
+            # PSALM Fusion (now includes P2 scale)
             fused = model.scs_fusion(query_feats, support_feats)
-            assert len(fused) == 3
+            assert len(fused) == 4  # P2, P3, P4, P5
             
             # Detection head - use scale-specific prototypes (Lego architecture)
+            # Convert dict to list for detection head
+            fused_list = [fused['p2'], fused['p3'], fused['p4'], fused['p5']]
             prototypes = {
+                'p2': support_feats['p2'],  # 32-dim
                 'p3': support_feats['p3'],  # 64-dim
                 'p4': support_feats['p4'],  # 128-dim
                 'p5': support_feats['p5'],  # 256-dim
             }
-            detections = model.detection_head(fused, prototypes, mode='dual')
-            assert 'standard_boxes' in detections
-            assert 'prototype_boxes' in detections
+            box_preds, sim_scores = model.detection_head(fused_list, prototypes)
+            assert len(box_preds) == 4  # P2, P3, P4, P5
+            assert len(sim_scores) == 4  # P2, P3, P4, P5
         
         print("✅ All component outputs verified")
 
@@ -413,7 +369,7 @@ class TestEndToEnd:
 def test_module_imports():
     """Test that end-to-end module can be imported"""
     try:
-        from models.yolov8n_refdet import YOLOv8nRefDet
+        from models.yolo_refdet import YOLOv8nRefDet
         print("✅ Module import successful")
     except ImportError as e:
         pytest.fail(f"Failed to import module: {e}")

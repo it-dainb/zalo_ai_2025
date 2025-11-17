@@ -12,7 +12,7 @@ python train.py \
     --use_triplet \
     --triplet_ratio 0.2 \
     --negative_strategy mixed \
-    --triplet_batch_size 32 \
+    --triplet_batch_size 48 \
     --use_batch_hard_triplet \
     --lr 1e-4 \
     --weight_decay 0.01 \

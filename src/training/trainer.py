@@ -14,7 +14,7 @@ import numpy as np
 import json
 import logging
 
-from src.models.yolov8n_refdet import YOLOv8nRefDet
+from models.yolo_refdet import YOLOv8nRefDet
 from src.losses.combined_loss import ReferenceBasedDetectionLoss
 from src.training.loss_utils import (
     prepare_loss_inputs,
@@ -35,7 +35,6 @@ except ImportError:
 
 def postprocess_model_outputs(
     model_outputs: Dict,
-    mode: str = 'prototype',
     conf_thres: float = 0.25,
     iou_thres: float = 0.45,
     max_det: int = 300,
@@ -45,8 +44,7 @@ def postprocess_model_outputs(
     Follows ultralytics YOLOv8 inference pipeline.
     
     Args:
-        model_outputs: Raw model outputs from YOLOv8nRefDet
-        mode: Detection mode ('standard', 'prototype', 'dual')
+        model_outputs: Raw model outputs from YOLOv8nRefDet (prototype-only)
         conf_thres: Confidence threshold
         iou_thres: IoU threshold for NMS
         max_det: Maximum number of detections
@@ -57,25 +55,12 @@ def postprocess_model_outputs(
             - 'pred_scores': (B, N) prediction confidence scores
             - 'pred_class_ids': (B, N) predicted class IDs
     """
-    # Select which head outputs to use based on mode
-    if mode == 'prototype' and 'prototype_boxes' in model_outputs:
-        boxes_list = model_outputs['prototype_boxes']  # List of (B, 4, H, W) per scale
-        scores_list = model_outputs['prototype_sim']   # List of (B, K, H, W) per scale
-    elif mode == 'standard' and 'standard_boxes' in model_outputs:
-        boxes_list = model_outputs['standard_boxes']   # List of (B, 4, H, W) per scale
-        scores_list = model_outputs['standard_cls']    # List of (B, nc, H, W) per scale
-    elif mode == 'dual':
-        # Use prototype head if available, otherwise standard
-        if 'prototype_boxes' in model_outputs:
-            boxes_list = model_outputs['prototype_boxes']
-            scores_list = model_outputs['prototype_sim']
-        elif 'standard_boxes' in model_outputs:
-            boxes_list = model_outputs['standard_boxes']
-            scores_list = model_outputs['standard_cls']
-        else:
-            raise ValueError("No detection outputs found in model_outputs")
-    else:
-        raise ValueError(f"Invalid mode '{mode}' or missing outputs in model_outputs")
+    # Extract prototype head outputs
+    if 'prototype_boxes' not in model_outputs or 'prototype_sim' not in model_outputs:
+        raise ValueError("Missing prototype detection outputs in model_outputs")
+    
+    boxes_list = model_outputs['prototype_boxes']  # List of (B, 4, H, W) per scale
+    scores_list = model_outputs['prototype_sim']   # List of (B, K, H, W) per scale
     
     device = boxes_list[0].device
     batch_size = boxes_list[0].shape[0]
@@ -919,10 +904,9 @@ class RefDetTrainer:
                 
                 # Single forward pass for both loss and metrics
                 with autocast(device_type='cuda' if torch.cuda.is_available() else 'cpu', enabled=self.mixed_precision):
-                    # Get raw model outputs
+                    # Get raw model outputs (prototype-only)
                     raw_outputs = self.model(
                         query_image=batch['query_images'],
-                        mode='dual',  # Use dual head for comprehensive evaluation
                         use_cache=True,
                         class_ids=batch.get('class_ids', None),
                     )
@@ -954,7 +938,6 @@ class RefDetTrainer:
                     # Use prototype head outputs for detection metrics
                     model_outputs = postprocess_model_outputs(
                         raw_outputs,
-                        mode='prototype',
                         conf_thres=0.25,
                         iou_thres=0.45,
                     )
@@ -1162,10 +1145,9 @@ class RefDetTrainer:
             n_support=K
         )
         
-        # Forward pass with query images
+        # Forward pass with query images (prototype-only)
         model_outputs = self.model(
             query_image=batch['query_images'],
-            mode='dual',  # Use dual head (base + novel)
             use_cache=True,  # Use cached support features
             class_ids=batch.get('class_ids', None),  # Pass class IDs for episodic learning
         )
@@ -1238,7 +1220,7 @@ class RefDetTrainer:
             batch['anchor_images'],
             return_global_feat=True,
         )
-        support_global_feat = anchor_features['global_feat']  # (B, 384)
+        support_global_feat = anchor_features['global_feat']  # (B, 256) - projected via triplet_proj
         
         # Extract positive features directly from backbone (no fusion needed)
         positive_features = self.model.backbone(

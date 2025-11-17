@@ -609,7 +609,7 @@ def prepare_triplet_loss_inputs(
     # Normalize all features before comparison (critical for stability)
     # This prevents gradient explosion from magnitude differences
     # Use L2 normalization to make features unit-length
-    # Both anchor (DINO with learnable projection) and query (YOLOv8) are now 256-dim
+    # Both anchor (DINOv3: 384→256 via triplet_proj) and query (YOLOv8: 256) are now 256-dim
     anchor_features = torch.nn.functional.normalize(anchor_features, p=2, dim=-1)  # (B, 256)
     query_global_feat = torch.nn.functional.normalize(query_global_feat, p=2, dim=-1)  # (B, 256)
     

@@ -17,11 +17,11 @@ from typing import Dict, List, Tuple
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from src.models.yolov8n_refdet import YOLOv8nRefDet
+from models.yolo_refdet import YOLOv8nRefDet
 from src.models.dino_encoder import DINOSupportEncoder
-from src.models.yolov8_backbone import YOLOv8BackboneExtractor
+from models.yolo_backbone import YOLOBackboneExtractor
 from src.models.psalm_fusion import PSALMFusion
-from src.models.dual_head import DualDetectionHead
+from models.prototype_head import DualDetectionHead
 
 
 def count_parameters(module: torch.nn.Module, trainable_only: bool = False) -> int:

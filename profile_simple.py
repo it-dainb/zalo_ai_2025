@@ -10,7 +10,7 @@ import time
 import argparse
 from pathlib import Path
 
-from src.models.yolov8n_refdet import YOLOv8nRefDet
+from models.yolo_refdet import YOLOv8nRefDet
 from src.datasets.refdet_dataset import RefDetDataset
 from src.datasets.collate import RefDetCollator
 from src.augmentations.augmentation_config import AugmentationConfig

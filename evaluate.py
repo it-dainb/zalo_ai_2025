@@ -16,7 +16,7 @@ sys.path.append(str(Path(__file__).parent))
 
 from src.datasets.refdet_dataset import RefDetDataset, EpisodicBatchSampler
 from src.datasets.collate import RefDetCollator
-from src.models.yolov8n_refdet import YOLOv8nRefDet
+from models.yolo_refdet import YOLOv8nRefDet
 from src.augmentations.augmentation_config import AugmentationConfig
 from src.training.logging_utils import setup_logger, get_experiment_name
 
@@ -70,11 +70,10 @@ def evaluate_episode(model, batch, device, iou_threshold=0.5):
     # Cache support features
     model.set_reference_images(support_flat, average_prototypes=True)
     
-    # Forward pass
+    # Forward pass (prototype-only detection)
     with torch.no_grad():
         outputs = model(
             query_image=batch['query_images'],
-            mode='prototype',  # Use prototype matching for novel objects
             use_cache=True,
         )
     
@@ -207,7 +206,6 @@ def main():
     
     model = YOLOv8nRefDet(
         yolo_weights='yolov8n.pt',
-        nc_base=0,
     )
     model.load_state_dict(checkpoint['model_state_dict'])
     model.to(args.device)

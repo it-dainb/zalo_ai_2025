@@ -5,7 +5,7 @@ import torch
 import sys
 sys.path.insert(0, 'src')
 
-from models.yolov8n_refdet import YOLOv8nRefDet
+from models.yolo_refdet import YOLOv8nRefDet
 from losses.combined_loss import ReferenceBasedDetectionLoss
 from training.loss_utils import prepare_loss_inputs
 

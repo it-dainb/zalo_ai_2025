@@ -9,7 +9,7 @@ for troubleshooting training issues.
 import torch
 from pathlib import Path
 
-from src.models.yolov8n_refdet import YOLOv8nRefDet
+from models.yolo_refdet import YOLOv8nRefDet
 from src.losses.combined_loss import ReferenceBasedDetectionLoss
 from src.training.trainer import RefDetTrainer
 

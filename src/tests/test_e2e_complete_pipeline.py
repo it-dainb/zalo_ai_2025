@@ -18,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from src.datasets.refdet_dataset import RefDetDataset, EpisodicBatchSampler
 from src.datasets.collate import RefDetCollator
-from src.models.yolov8n_refdet import YOLOv8nRefDet
+from models.yolo_refdet import YOLOv8nRefDet
 from src.losses.combined_loss import ReferenceBasedDetectionLoss
 from src.training.trainer import RefDetTrainer
 from src.augmentations.augmentation_config import AugmentationConfig
@@ -152,7 +152,7 @@ class TestCompleteE2EPipeline:
         
         model = YOLOv8nRefDet(
             yolo_weights=weights_path,
-            nc_base=0,
+            
             freeze_yolo=False,
             freeze_dinov3=True,
         ).to(device)
@@ -172,7 +172,6 @@ class TestCompleteE2EPipeline:
             bbox_weight=7.5,
             cls_weight=0.5,
             supcon_weight=1.0,
-            cpe_weight=0.5,
         ).to(device)
         
         optimizer = torch.optim.AdamW(
@@ -237,7 +236,7 @@ class TestCompleteE2EPipeline:
         # Load checkpoint into new model
         model_eval = YOLOv8nRefDet(
             yolo_weights=weights_path,
-            nc_base=0,
+            
         ).to(device)
         # Use strict=True to ensure model architecture is deterministic
         model_eval.load_state_dict(checkpoint['model_state_dict'], strict=True)
@@ -299,7 +298,6 @@ class TestCompleteE2EPipeline:
             model_eval.set_reference_images(support_images, average_prototypes=True)
             outputs = model_eval(
                 query_image=query_image,
-                mode='prototype',
                 use_cache=True,
             )
         
@@ -352,7 +350,7 @@ class TestPipelineRobustness:
         
         model = YOLOv8nRefDet(
             yolo_weights=weights_path,
-            nc_base=0,
+            
         ).to(device)
         
         # Single query image
@@ -361,7 +359,7 @@ class TestPipelineRobustness:
         
         with torch.no_grad():
             model.set_reference_images(support)
-            outputs = model(query_image=query, mode='prototype', use_cache=True)
+            outputs = model(query_image=query, use_cache=True)
         
         assert outputs is not None
         print(f"✅ Pipeline handles minimal input")

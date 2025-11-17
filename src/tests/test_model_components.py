@@ -6,7 +6,7 @@ Tests individual model components in isolation:
 1. DINOv2 encoder
 2. YOLOv8 backbone
 3. CHEAF fusion module
-4. Dual detection head
+4. Prototype detection head
 5. Component integration
 """
 
@@ -18,9 +18,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from models.dino_encoder import DINOSupportEncoder
-from models.yolov8_backbone import YOLOv8BackboneExtractor
+from models.yolo_backbone import YOLOBackboneExtractor
 from models.cheaf_fusion import CHEAFFusionModule
-from models.dual_head import DualDetectionHead
+from models.prototype_head import PrototypeDetectionHead
 
 
 class TestDINOv2Encoder:
@@ -104,7 +104,7 @@ class TestYOLOv8Backbone:
         if not Path(weights_path).exists():
             weights_path = "yolov8n.pt"
         
-        backbone = YOLOv8BackboneExtractor(
+        backbone = YOLOBackboneExtractor(
             weights_path=weights_path,
             extract_scales=['p3', 'p4', 'p5'],
             freeze_backbone=False,
@@ -240,8 +240,8 @@ class TestCHEAFFusion:
         print(f"✅ Fusion output channels correct")
 
 
-class TestDualDetectionHead:
-    """Test dual detection head"""
+class TestPrototypeDetectionHead:
+    """Test prototype detection head"""
     
     @pytest.fixture
     def device(self):
@@ -249,14 +249,11 @@ class TestDualDetectionHead:
     
     @pytest.fixture
     def detection_head(self, device):
-        """Create dual detection head"""
-        head = DualDetectionHead(
-            nc_base=80,
+        """Create prototype detection head"""
+        head = PrototypeDetectionHead(
             ch=[128, 256, 512, 512],  # 4 scales: P2, P3, P4, P5
             proto_dims=[32, 64, 128, 256],  # Scale-specific prototype dimensions
             temperature=10.0,
-            conf_thres=0.25,
-            iou_thres=0.45,
         ).to(device)
         head.eval()
         return head
@@ -264,40 +261,17 @@ class TestDualDetectionHead:
     def test_head_initialization(self, detection_head):
         """Test head initializes correctly"""
         assert detection_head is not None
-        print(f"✅ Dual detection head initialized")
+        print(f"✅ Prototype detection head initialized")
     
-    def test_head_standard_mode(self, detection_head, device):
-        """Test head in standard mode"""
+    def test_head_prototype_forward(self, detection_head, device):
+        """Test head forward pass"""
         # Create dummy fused features (4 scales: P2-P5)
-        fused_feats = {
-            'p2': torch.randn(1, 128, 160, 160).to(device),
-            'p3': torch.randn(1, 256, 80, 80).to(device),
-            'p4': torch.randn(1, 512, 40, 40).to(device),
-            'p5': torch.randn(1, 512, 20, 20).to(device),
-        }
-        
-        with torch.no_grad():
-            outputs = detection_head(fused_feats, mode='standard')
-        
-        # Check output structure
-        assert 'standard_boxes' in outputs
-        assert 'standard_cls' in outputs
-        
-        print(f"✅ Head standard mode successful")
-        # Outputs might be lists or tensors
-        if isinstance(outputs['standard_boxes'], list):
-            print(f"   Boxes: list with {len(outputs['standard_boxes'])} scales")
-        else:
-            print(f"   Boxes: {outputs['standard_boxes'].shape}")
-    
-    def test_head_prototype_mode(self, detection_head, device):
-        """Test head in prototype mode"""
-        fused_feats = {
-            'p2': torch.randn(1, 128, 160, 160).to(device),
-            'p3': torch.randn(1, 256, 80, 80).to(device),
-            'p4': torch.randn(1, 512, 40, 40).to(device),
-            'p5': torch.randn(1, 512, 20, 20).to(device),
-        }
+        feat_list = [
+            torch.randn(1, 128, 160, 160).to(device),
+            torch.randn(1, 256, 80, 80).to(device),
+            torch.randn(1, 512, 40, 40).to(device),
+            torch.randn(1, 512, 20, 20).to(device),
+        ]
         
         # Create dummy prototype features (dict format to match API) - 4 scales
         prototype_feats = {
@@ -308,48 +282,15 @@ class TestDualDetectionHead:
         }
         
         with torch.no_grad():
-            outputs = detection_head(
-                fused_feats,
-                mode='prototype',
-                prototypes=prototype_feats
-            )
+            box_preds, sim_scores = detection_head(feat_list, prototype_feats)
         
         # Check output structure
-        assert 'prototype_boxes' in outputs
-        assert 'prototype_sim' in outputs
+        assert len(box_preds) == 4  # 4 scales
+        assert len(sim_scores) == 4
         
-        print(f"✅ Head prototype mode successful")
-    
-    def test_head_dual_mode(self, detection_head, device):
-        """Test head in dual mode"""
-        fused_feats = {
-            'p2': torch.randn(1, 128, 160, 160).to(device),
-            'p3': torch.randn(1, 256, 80, 80).to(device),
-            'p4': torch.randn(1, 512, 40, 40).to(device),
-            'p5': torch.randn(1, 512, 20, 20).to(device),
-        }
-        
-        prototype_feats = {
-            'p2': torch.randn(1, 32).to(device),
-            'p3': torch.randn(1, 64).to(device),
-            'p4': torch.randn(1, 128).to(device),
-            'p5': torch.randn(1, 256).to(device),
-        }
-        
-        with torch.no_grad():
-            outputs = detection_head(
-                fused_feats,
-                mode='dual',
-                prototypes=prototype_feats
-            )
-        
-        # Check both outputs are present
-        assert 'standard_boxes' in outputs
-        assert 'standard_cls' in outputs
-        assert 'prototype_boxes' in outputs
-        assert 'prototype_sim' in outputs
-        
-        print(f"✅ Head dual mode successful")
+        print(f"✅ Head forward pass successful")
+        print(f"   Boxes: list with {len(box_preds)} scales")
+        print(f"   Similarities: list with {len(sim_scores)} scales")
 
 
 class TestComponentIntegration:
@@ -376,7 +317,7 @@ class TestComponentIntegration:
             freeze_backbone=True,
         ).to(device)
         
-        backbone = YOLOv8BackboneExtractor(
+        backbone = YOLOBackboneExtractor(
             weights_path="yolov8n.pt",
             extract_scales=['p3', 'p4', 'p5'],
             freeze_backbone=False,
@@ -391,8 +332,7 @@ class TestComponentIntegration:
             use_short_long_conv=True,
         ).to(device)
         
-        head = DualDetectionHead(
-            nc_base=80,
+        head = PrototypeDetectionHead(
             ch=[128, 256, 512, 512],  # 4 scales: P2, P3, P4, P5
             proto_dims=[32, 64, 128, 256],  # Scale-specific prototype dimensions
         ).to(device)
@@ -406,18 +346,22 @@ class TestComponentIntegration:
             support_feats = encoder(support_images)
             query_feats = backbone(query_image)
             fused_feats = fusion(query_feats, support_feats)
-            outputs = head(fused_feats, mode='dual', prototypes=support_feats)
+            # Convert dict to list for head input
+            feat_list = [fused_feats['p2'], fused_feats['p3'], fused_feats['p4'], fused_feats['p5']]
+            box_preds, sim_scores = head(feat_list, support_feats)
         
         # Verify outputs
-        assert outputs is not None
-        assert 'standard_boxes' in outputs
-        assert 'prototype_boxes' in outputs
+        assert box_preds is not None
+        assert sim_scores is not None
+        assert len(box_preds) == 4
+        assert len(sim_scores) == 4
         
         print(f"✅ All components integrated successfully")
         print(f"   Support features: {[f.shape for f in support_feats.values()]}")
         print(f"   Query features: {[f.shape for f in query_feats.values()]}")
         print(f"   Fused features: {[f.shape for f in fused_feats.values()]}")
-        print(f"   Output keys: {list(outputs.keys())}")
+        print(f"   Box predictions: {len(box_preds)} scales")
+        print(f"   Similarity scores: {len(sim_scores)} scales")
 
 
 if __name__ == "__main__":

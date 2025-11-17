@@ -226,7 +226,7 @@ def run_profiling(args):
     
     print(f"✓ Model loaded")
     print(f"  Total parameters: {sum(p.numel() for p in model.parameters()) / 1e6:.2f}M")
-    print(f"  DINOv3 frozen: {model.support_encoder.backbone.requires_grad_(False) is not None}")
+    print(f"  DINOv3 frozen: {model.support_encoder.freeze_backbone}")
     
     # Loss setup
     loss_fn = ReferenceBasedDetectionLoss(

@@ -14,7 +14,7 @@ import torch
 import numpy as np
 from pathlib import Path
 
-from models.yolo_refdet import YOLOv8nRefDet
+from src.models.yolo_refdet import YOLORefDet
 from src.losses.combined_loss import ReferenceBasedDetectionLoss
 from src.training.trainer import RefDetTrainer
 from src.training.loss_utils import prepare_triplet_loss_inputs
@@ -32,7 +32,7 @@ class TestTripletIntegration:
     @pytest.fixture
     def model(self, device):
         """Create model for testing."""
-        model = YOLOv8nRefDet(
+        model = YOLORefDet(
             yolo_weights='yolov8n.pt',
             
             dinov3_model='vit_small_patch16_dinov3.lvd1689m',

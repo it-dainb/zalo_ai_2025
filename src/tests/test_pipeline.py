@@ -11,7 +11,7 @@ sys.path.append(str(Path(__file__).parent))
 
 from src.datasets.refdet_dataset import RefDetDataset, EpisodicBatchSampler
 from src.datasets.collate import RefDetCollator
-from models.yolo_refdet import YOLOv8nRefDet
+from src.models.yolo_refdet import YOLORefDet
 from src.losses.combined_loss import ReferenceBasedDetectionLoss
 from src.augmentations.augmentation_config import AugmentationConfig
 
@@ -138,7 +138,7 @@ def test_model():
             print("  Download with: wget https://github.com/ultralytics/assets/releases/download/v0.0.0/yolov8n.pt")
             return True
         
-        model = YOLOv8nRefDet(
+        model = YOLORefDet(
             yolo_weights='yolov8n.pt',
         )
         

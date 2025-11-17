@@ -9,7 +9,7 @@ for troubleshooting training issues.
 import torch
 from pathlib import Path
 
-from models.yolo_refdet import YOLOv8nRefDet
+from models.yolo_refdet import YOLORefDet
 from src.losses.combined_loss import ReferenceBasedDetectionLoss
 from src.training.trainer import RefDetTrainer
 
@@ -18,7 +18,7 @@ def example_basic_debug():
     """Enable debug logging with default settings."""
     
     # Create model, loss, optimizer (simplified)
-    model = YOLOv8nRefDet(num_classes=1)
+    model = YOLORefDet(num_classes=1)
     loss_fn = ReferenceBasedDetectionLoss(stage=2)
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4)
     
@@ -41,7 +41,7 @@ def example_basic_debug():
 def example_debug_gradients():
     """Debug gradient flow issues."""
     
-    model = YOLOv8nRefDet(num_classes=1)
+    model = YOLORefDet(num_classes=1)
     loss_fn = ReferenceBasedDetectionLoss(stage=2)
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4)
     
@@ -65,7 +65,7 @@ def example_debug_gradients():
 def example_model_inspection():
     """Inspect model architecture and parameters."""
     
-    model = YOLOv8nRefDet(num_classes=1)
+    model = YOLORefDet(num_classes=1)
     loss_fn = ReferenceBasedDetectionLoss(stage=2)
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4)
     
@@ -140,7 +140,7 @@ def example_debug_training():
     """Complete example with debug logging in training loop."""
     
     # Setup (simplified - use real dataloaders in practice)
-    model = YOLOv8nRefDet(num_classes=1)
+    model = YOLORefDet(num_classes=1)
     loss_fn = ReferenceBasedDetectionLoss(stage=2)
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4)
     

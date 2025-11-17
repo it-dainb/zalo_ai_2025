@@ -39,7 +39,7 @@ from pathlib import Path
 from src.datasets.refdet_dataset import RefDetDataset, EpisodicBatchSampler
 from src.datasets.collate import RefDetCollator, TripletCollator
 from src.datasets.triplet_dataset import TripletDataset
-from models.yolo_refdet import YOLOv8nRefDet
+from models.yolo_refdet import YOLORefDet
 from src.losses.combined_loss import ReferenceBasedDetectionLoss
 from src.augmentations import get_stage_config, get_yolov8_augmentation_params, print_stage_config
 from src.training.trainer import RefDetTrainer
@@ -355,7 +355,7 @@ def create_model(args):
     print("Creating YOLOv8n-RefDet (P2-P5 Architecture)...")
     print(f"{'='*60}\n")
     
-    model = YOLOv8nRefDet(
+    model = YOLORefDet(
         yolo_weights=args.yolo_weights,
         dinov3_model=args.dinov3_model,
         freeze_yolo=args.freeze_yolo,

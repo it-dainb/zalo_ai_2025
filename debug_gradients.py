@@ -2,10 +2,10 @@
 Debug script to check gradient flow in the model.
 """
 import torch
-from models.yolo_refdet import YOLOv8nRefDet
+from models.yolo_refdet import YOLORefDet
 
 # Create model
-model = YOLOv8nRefDet(
+model = YOLORefDet(
     num_base_classes=1,
     fusion_module='cheaf',
     freeze_dinov3=True,

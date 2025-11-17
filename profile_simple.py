@@ -10,7 +10,7 @@ import time
 import argparse
 from pathlib import Path
 
-from models.yolo_refdet import YOLOv8nRefDet
+from models.yolo_refdet import YOLORefDet
 from src.datasets.refdet_dataset import RefDetDataset
 from src.datasets.collate import RefDetCollator
 from src.augmentations.augmentation_config import AugmentationConfig
@@ -225,7 +225,7 @@ def main():
     
     # Load model
     print("\nLoading model...")
-    model = YOLOv8nRefDet(
+    model = YOLORefDet(
         yolo_weights='yolov8n.pt',
         nc_base=80,
         freeze_yolo=True,

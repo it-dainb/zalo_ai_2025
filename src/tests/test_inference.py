@@ -21,7 +21,7 @@ import time
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from models.yolo_refdet import YOLOv8nRefDet
+from src.models.yolo_refdet import YOLORefDet
 
 
 class TestBasicInference:
@@ -38,7 +38,7 @@ class TestBasicInference:
         if not Path(weights_path).exists():
             weights_path = "yolov8n.pt"
         
-        model = YOLOv8nRefDet(
+        model = YOLORefDet(
             yolo_weights=weights_path,
             
             freeze_yolo=False,
@@ -114,7 +114,7 @@ class TestInferenceModes:
         if not Path(weights_path).exists():
             weights_path = "yolov8n.pt"
         
-        model = YOLOv8nRefDet(
+        model = YOLORefDet(
             yolo_weights=weights_path,
             freeze_yolo=False,
             freeze_dinov3=True,
@@ -163,7 +163,7 @@ class TestReferenceCaching:
         if not Path(weights_path).exists():
             weights_path = "yolov8n.pt"
         
-        model = YOLOv8nRefDet(
+        model = YOLORefDet(
             yolo_weights=weights_path,
             
         ).to(device)
@@ -235,7 +235,7 @@ class TestInferenceSpeed:
         if not Path(weights_path).exists():
             weights_path = "yolov8n.pt"
         
-        model = YOLOv8nRefDet(
+        model = YOLORefDet(
             yolo_weights=weights_path,
             
         ).to(device)
@@ -321,7 +321,7 @@ class TestInferenceWithRealData:
         if not Path(weights_path).exists():
             weights_path = "yolov8n.pt"
         
-        model = YOLOv8nRefDet(
+        model = YOLORefDet(
             yolo_weights=weights_path,
             
         ).to(device)

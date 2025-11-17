@@ -26,7 +26,7 @@ from .psalm_fusion import PSALMFusion
 from .prototype_head import PrototypeDetectionHead
 
 
-class YOLOv8nRefDet(nn.Module):
+class YOLORefDet(nn.Module):
     """
     YOLOv8n-RefDet: Reference-Based Detection Model
     
@@ -143,6 +143,7 @@ class YOLOv8nRefDet(nn.Module):
         average_prototypes: bool = True,
         n_way: int = None,
         n_support: int = None,
+        allow_gradients: bool = False,
     ):
         """
         Pre-compute and cache support features from reference images.
@@ -155,8 +156,11 @@ class YOLOv8nRefDet(nn.Module):
             average_prototypes: If True and multiple images, average prototypes
             n_way: Number of classes (for episodic learning)
             n_support: Number of support images per class (for episodic learning)
+            allow_gradients: If True, allow gradients to flow (for training). If False, use no_grad (for inference)
         """
-        with torch.no_grad():
+        # Use context manager conditionally based on allow_gradients
+        ctx = torch.enable_grad() if allow_gradients else torch.no_grad()
+        with ctx:
             # Episodic learning: N classes with K support images each
             if n_way is not None and n_support is not None and average_prototypes:
                 # support_images shape: (N*K, 3, H, W)
@@ -411,29 +415,249 @@ class YOLOv8nRefDet(nn.Module):
         support_images: Optional[torch.Tensor] = None,
         conf_thres: Optional[float] = None,
         iou_thres: Optional[float] = None,
+        max_det: int = 300,
+        return_raw: bool = False,
     ) -> Dict[str, torch.Tensor]:
         """
-        High-level inference method with post-processing.
+        High-level inference method with post-processing for UAV video streams.
+        
+        **Efficient UAV Inference Workflow:**
+        1. First frame: Call with support_images to cache reference features
+        2. Subsequent frames: Call with support_images=None (uses cache)
+        3. Clear cache when switching to new target: model.clear_cache()
+        
+        Example UAV video processing:
+        ```python
+        model.eval()
+        
+        # Load reference images once (K-shot)
+        ref_images = load_reference_images()  # (K, 3, 256, 256)
+        
+        # Process video stream
+        for frame in video_stream:
+            frame_tensor = preprocess(frame)  # (1, 3, 640, 640)
+            
+            # First frame: cache references
+            if frame_idx == 0:
+                detections = model.inference(frame_tensor, support_images=ref_images)
+            else:
+                # Use cached features (fast!)
+                detections = model.inference(frame_tensor)
+            
+            # Draw bboxes
+            draw_detections(frame, detections)
+        ```
         
         Args:
-            query_image: Query image (B, 3, 640, 640)
-            support_images: Reference images or None to use cache
-            conf_thres: Override confidence threshold
-            iou_thres: Override IoU threshold
+            query_image: Query image tensor (B, 3, 640, 640)
+                - For video: typically B=1 (single frame)
+                - Pre-normalized to [0, 1] range
+            support_images: Reference images (K, 3, 256, 256) or None
+                - If provided: Cache these reference features
+                - If None: Use previously cached features (efficient for video)
+                - K can be 1 (single ref) or multiple (K-shot averaging)
+            conf_thres: Confidence threshold (default: 0.25)
+            iou_thres: IoU threshold for NMS (default: 0.45)
+            max_det: Maximum detections per image (default: 300)
+            return_raw: If True, return raw model outputs without post-processing
         
         Returns:
-            Post-processed detections
+            Dictionary with post-processed detections:
+                - 'bboxes': (B, N, 4) in xyxy format [x1, y1, x2, y2]
+                - 'scores': (B, N) confidence scores [0, 1]
+                - 'class_ids': (B, N) predicted class indices
+                - 'num_detections': (B,) number of valid detections per image
+                
+                Where N = max number of detections (padded)
+                Valid detections are where scores > 0
         """
         # Use provided thresholds or defaults
         conf_thres = conf_thres or self.conf_thres
         iou_thres = iou_thres or self.iou_thres
         
-        # Forward pass
-        outputs = self.forward(query_image, support_images)
+        # Ensure model is in eval mode
+        was_training = self.training
+        if was_training:
+            self.eval()
         
-        # TODO: Add post-processing (NMS, score thresholding)
-        # For now, return raw outputs
-        return outputs
+        with torch.no_grad():
+            # Cache support features if provided
+            if support_images is not None:
+                # Process and cache support features for efficient video stream processing
+                if support_images.shape[0] > 1:
+                    # K-shot: average multiple support images into single prototype
+                    support_list = [support_images[i:i+1] for i in range(support_images.shape[0])]
+                    support_feats = self.support_encoder.compute_average_prototype(
+                        support_list, 
+                        return_global_feat=False
+                    )
+                else:
+                    # Single-shot: just encode
+                    support_feats = self.support_encoder(support_images, return_global_feat=False)
+                
+                # Cache for subsequent frames
+                self._cached_support_features = support_feats
+            
+            # Forward pass
+            raw_outputs = self.forward(
+                query_image, 
+                support_images=None if support_images is not None else None,  # Always use cache after setting
+                use_cache=True,  # Always use cache in inference
+            )
+            
+            # Return raw outputs if requested (for debugging or custom post-processing)
+            if return_raw:
+                if was_training:
+                    self.train()
+                return raw_outputs
+            
+            # Post-process detections (NMS, thresholding)
+            detections = self._postprocess_detections(
+                raw_outputs,
+                conf_thres=conf_thres,
+                iou_thres=iou_thres,
+                max_det=max_det,
+            )
+        
+        # Restore training mode if needed
+        if was_training:
+            self.train()
+        
+        return detections
+    
+    def _postprocess_detections(
+        self,
+        model_outputs: Dict[str, torch.Tensor],
+        conf_thres: float = 0.25,
+        iou_thres: float = 0.45,
+        max_det: int = 300,
+    ) -> Dict[str, torch.Tensor]:
+        """
+        Post-process raw model outputs to extract final detections.
+        
+        Follows YOLOv8 inference pipeline:
+        1. Decode bbox predictions from anchor offsets to xyxy coordinates
+        2. Apply confidence thresholding
+        3. Apply NMS per class
+        4. Limit to max_det detections
+        
+        Args:
+            model_outputs: Raw model outputs from forward pass
+            conf_thres: Confidence threshold
+            iou_thres: IoU threshold for NMS
+            max_det: Maximum number of detections
+        
+        Returns:
+            Post-processed detections dictionary
+        """
+        from torchvision.ops import nms
+        
+        # Extract prototype head outputs
+        boxes_list = model_outputs['prototype_boxes']  # List of (B, 4, H, W) per scale
+        scores_list = model_outputs['prototype_sim']   # List of (B, K, H, W) per scale
+        
+        device = boxes_list[0].device
+        batch_size = boxes_list[0].shape[0]
+        
+        # Strides for each scale [P2, P3, P4, P5]
+        strides = torch.tensor([4, 8, 16, 32], device=device, dtype=torch.float32)
+        
+        # Concatenate all scales
+        box_list_flat = []
+        scores_list_flat = []
+        
+        for boxes, scores in zip(boxes_list, scores_list):
+            B, C, H, W = boxes.shape
+            box_list_flat.append(boxes.view(B, C, -1))  # (B, 4, H*W)
+            scores_list_flat.append(scores.view(B, scores.shape[1], -1))  # (B, K, H*W)
+        
+        # Concatenate across scales
+        box_cat = torch.cat(box_list_flat, dim=2)  # (B, 4, total_anchors)
+        scores_cat = torch.cat(scores_list_flat, dim=2)  # (B, K, total_anchors)
+        
+        # Generate anchor points
+        anchor_points_list = []
+        stride_tensor_list = []
+        for i, (boxes_scale, stride) in enumerate(zip(boxes_list, strides)):
+            _, _, h, w = boxes_scale.shape
+            sy = torch.arange(h, device=device, dtype=torch.float32) + 0.5
+            sx = torch.arange(w, device=device, dtype=torch.float32) + 0.5
+            sy, sx = torch.meshgrid(sy, sx, indexing='ij')
+            anchor_points_list.append(torch.stack((sx, sy), -1).view(-1, 2))
+            stride_tensor_list.append(torch.full((h * w, 1), stride.item(), device=device, dtype=torch.float32))
+        
+        anchor_points = torch.cat(anchor_points_list)  # (total_anchors, 2)
+        stride_tensor = torch.cat(stride_tensor_list)  # (total_anchors, 1)
+        
+        # Decode bbox predictions from ltrb offsets to xyxy coordinates
+        box_preds = box_cat.permute(0, 2, 1)  # (B, total_anchors, 4) [l, t, r, b]
+        
+        anchor_x = anchor_points[:, 0:1] * stride_tensor
+        anchor_y = anchor_points[:, 1:2] * stride_tensor
+        
+        eps = 1e-4
+        decoded_boxes = torch.stack([
+            anchor_x.squeeze(1) - box_preds[:, :, 0] * stride_tensor.squeeze(1),
+            anchor_y.squeeze(1) - box_preds[:, :, 1] * stride_tensor.squeeze(1),
+            anchor_x.squeeze(1) + box_preds[:, :, 2] * stride_tensor.squeeze(1) + eps,
+            anchor_y.squeeze(1) + box_preds[:, :, 3] * stride_tensor.squeeze(1) + eps,
+        ], dim=2)  # (B, total_anchors, 4)
+        
+        # Apply sigmoid to scores and get class predictions
+        scores_cat = scores_cat.sigmoid().permute(0, 2, 1)  # (B, total_anchors, K)
+        max_scores, class_ids = scores_cat.max(dim=-1)  # (B, total_anchors)
+        
+        # Apply confidence threshold and NMS per batch
+        final_boxes = []
+        final_scores = []
+        final_class_ids = []
+        
+        for b in range(batch_size):
+            # Filter by confidence
+            conf_mask = max_scores[b] >= conf_thres
+            boxes_b = decoded_boxes[b][conf_mask]
+            scores_b = max_scores[b][conf_mask]
+            class_ids_b = class_ids[b][conf_mask]
+            
+            if len(boxes_b) == 0:
+                # No detections above threshold
+                final_boxes.append(torch.zeros((0, 4), device=device))
+                final_scores.append(torch.zeros(0, device=device))
+                final_class_ids.append(torch.zeros(0, dtype=torch.long, device=device))
+                continue
+            
+            # Apply NMS
+            keep_indices = nms(boxes_b, scores_b, iou_thres)
+            keep_indices = keep_indices[:max_det]  # Limit to max_det
+            
+            final_boxes.append(boxes_b[keep_indices])
+            final_scores.append(scores_b[keep_indices])
+            final_class_ids.append(class_ids_b[keep_indices])
+        
+        # Pad to same length for batching
+        max_dets = max(len(b) for b in final_boxes) if final_boxes else 0
+        max_dets = min(max(max_dets, 1), max_det)  # At least 1, at most max_det
+        
+        padded_boxes = torch.zeros((batch_size, max_dets, 4), device=device)
+        padded_scores = torch.zeros((batch_size, max_dets), device=device)
+        padded_class_ids = torch.zeros((batch_size, max_dets), dtype=torch.long, device=device)
+        num_detections = torch.zeros(batch_size, dtype=torch.long, device=device)
+        
+        for b in range(batch_size):
+            n = len(final_boxes[b])
+            if n > 0:
+                n = min(n, max_dets)
+                padded_boxes[b, :n] = final_boxes[b][:n]
+                padded_scores[b, :n] = final_scores[b][:n]
+                padded_class_ids[b, :n] = final_class_ids[b][:n]
+                num_detections[b] = n
+        
+        return {
+            'bboxes': padded_boxes,
+            'scores': padded_scores,
+            'class_ids': padded_class_ids,
+            'num_detections': num_detections,
+        }
 
 
 def test_yolov8n_refdet():
@@ -453,7 +677,7 @@ def test_yolov8n_refdet():
     
     # Initialize complete model (prototype-only, no base classes)
     print("Initializing YOLOv8n-RefDet...")
-    model = YOLOv8nRefDet(
+    model = YOLORefDet(
         yolo_weights=weights_path,
         freeze_yolo=False,
         freeze_dinov3=True,

@@ -1,10 +1,10 @@
 import torch
-from models.yolo_refdet import YOLOv8nRefDet
+from models.yolo_refdet import YOLORefDet
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 # Create model
-model = YOLOv8nRefDet(
+model = YOLORefDet(
     yolo_weights='yolov8n.pt',
     dinov3_model='vit_small_patch16_dinov3.lvd1689m',
     freeze_yolo=False,

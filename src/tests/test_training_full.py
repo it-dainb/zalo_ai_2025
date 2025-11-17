@@ -21,7 +21,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from src.datasets.refdet_dataset import RefDetDataset, EpisodicBatchSampler
 from src.datasets.collate import RefDetCollator
-from models.yolo_refdet import YOLOv8nRefDet
+from src.models.yolo_refdet import YOLORefDet
 from src.losses.combined_loss import ReferenceBasedDetectionLoss
 from src.training.trainer import RefDetTrainer
 from src.augmentations.augmentation_config import AugmentationConfig
@@ -96,7 +96,7 @@ class TestMinimalTraining:
         if not Path(weights_path).exists():
             weights_path = "yolov8n.pt"
         
-        model = YOLOv8nRefDet(
+        model = YOLORefDet(
             yolo_weights=weights_path,
             
             freeze_yolo=False,
@@ -221,7 +221,7 @@ class TestMinimalTraining:
         if not Path(weights_path).exists():
             weights_path = "yolov8n.pt"
         
-        model = YOLOv8nRefDet(
+        model = YOLORefDet(
             yolo_weights=weights_path,
             
             freeze_yolo=False,
@@ -264,7 +264,7 @@ class TestMinimalTraining:
         if not Path(weights_path).exists():
             weights_path = "yolov8n.pt"
         
-        model = YOLOv8nRefDet(
+        model = YOLORefDet(
             yolo_weights=weights_path,
             
             freeze_yolo=False,
@@ -318,7 +318,7 @@ class TestMinimalTraining:
         if not Path(weights_path).exists():
             weights_path = "yolov8n.pt"
         
-        model = YOLOv8nRefDet(
+        model = YOLORefDet(
             yolo_weights=weights_path,
             
         ).to(device)
@@ -347,7 +347,7 @@ class TestMinimalTraining:
         checkpoint_path = checkpoint_dir / "checkpoint_epoch_5.pt"
         
         # Create new trainer and resume
-        model2 = YOLOv8nRefDet(
+        model2 = YOLORefDet(
             yolo_weights=weights_path,
             
         ).to(device)
@@ -385,7 +385,7 @@ class TestMultiStageTraining:
             weights_path = "yolov8n.pt"
         
         # Stage 2 setup
-        model = YOLOv8nRefDet(
+        model = YOLORefDet(
             yolo_weights=weights_path,
             
         ).to(device)

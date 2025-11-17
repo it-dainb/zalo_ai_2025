@@ -5,7 +5,7 @@ import torch
 import sys
 sys.path.insert(0, 'src')
 
-from models.yolo_refdet import YOLOv8nRefDet
+from models.yolo_refdet import YOLORefDet
 from losses.combined_loss import ReferenceBasedDetectionLoss
 from training.loss_utils import prepare_loss_inputs
 
@@ -14,7 +14,7 @@ print(f'Device: {device}\n')
 
 # Initialize model
 print('Initializing model...')
-model = YOLOv8nRefDet(
+model = YOLORefDet(
     yolo_weights='yolov8n.pt',
     nc_base=80,
     freeze_yolo=False,

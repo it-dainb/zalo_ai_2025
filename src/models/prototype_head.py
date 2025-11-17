@@ -1,3 +1,4 @@
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from typing import Dict, List, Tuple, Optional
@@ -143,14 +144,15 @@ class PrototypeDetectionHead(nn.Module):
         # Compute cosine similarity
         # Reshape features: (B, C, H, W) -> (B, C, H*W)
         b, c, h, w = features.shape
+        k = prototypes.shape[0]
         features_flat = features.reshape(b, c, -1)  # (B, C, H*W)
         
-        # Matrix multiplication with broadcasting: (K, C) @ (B, C, H*W) -> (B, K, H*W)
-        # PyTorch broadcasts (K, C) to (1, K, C) then to (B, K, C)
-        similarity = torch.matmul(prototypes, features_flat)  # (B, K, H*W)
+        # Einsum for proper broadcasting: (K, C) with (B, C, H*W) -> (B, K, H*W)
+        # This computes similarity between each of K prototypes and each spatial location in B samples
+        similarity = torch.einsum('kc,bcp->bkp', prototypes, features_flat)  # (B, K, H*W)
         
         # Reshape back: (B, K, H*W) -> (B, K, H, W)
-        similarity = similarity.reshape(b, -1, h, w)
+        similarity = similarity.reshape(b, k, h, w)
         
         # Temperature scaling
         similarity = similarity * self.temperature
@@ -202,19 +204,16 @@ class PrototypeDetectionHead(nn.Module):
                     )
                 
                 # Compute cosine similarity
-                # If proto has same batch size as features, it's per-sample prototypes
-                # Otherwise, it's K class prototypes
+                # proto shape: (K, C) where K = number of class prototypes
+                # For N-way episodic learning: K = N (number of classes)
+                # For single-class detection: K = 1 (one prototype)
+                # Always compute full similarity: (B, K, H, W)
                 B = feat_proj.shape[0]
                 K = proto.shape[0]
                 
-                if K == B and B > 1:
-                    # Per-sample prototypes: compute similarity and take diagonal
-                    sim = self.compute_similarity(feat_proj, proto)  # (B, B, H, W)
-                    # Extract diagonal: each sample's similarity with its own prototype
-                    sim = torch.stack([sim[i, i:i+1] for i in range(B)], dim=0)  # (B, 1, H, W)
-                else:
-                    # K class prototypes: standard similarity computation
-                    sim = self.compute_similarity(feat_proj, proto)  # (B, K, H, W)
+                # Always use standard K-way similarity computation
+                # This supports both N-way episodic learning and single-class detection
+                sim = self.compute_similarity(feat_proj, proto)  # (B, K, H, W)
                 
                 sim_scores.append(sim)
             else:

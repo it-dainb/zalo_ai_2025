@@ -21,7 +21,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from src.datasets.refdet_dataset import RefDetDataset, EpisodicBatchSampler
 from src.datasets.collate import RefDetCollator
-from models.yolo_refdet import YOLOv8nRefDet
+from src.models.yolo_refdet import YOLORefDet
 from src.augmentations.augmentation_config import AugmentationConfig
 
 
@@ -108,7 +108,7 @@ class TestModelEvaluation:
         if not Path(weights_path).exists():
             weights_path = "yolov8n.pt"
         
-        model = YOLOv8nRefDet(
+        model = YOLORefDet(
             yolo_weights=weights_path,
             
             freeze_yolo=False,
@@ -179,7 +179,7 @@ class TestEvaluationPipeline:
         if not Path(weights_path).exists():
             weights_path = "yolov8n.pt"
         
-        model = YOLOv8nRefDet(
+        model = YOLORefDet(
             yolo_weights=weights_path,
             
         ).to(device)
@@ -239,7 +239,7 @@ class TestEvaluationPipeline:
         if not Path(weights_path).exists():
             weights_path = "yolov8n.pt"
         
-        model = YOLOv8nRefDet(
+        model = YOLORefDet(
             yolo_weights=weights_path,
             
         ).to(device)
@@ -314,7 +314,7 @@ class TestEvaluationPipeline:
         if not Path(weights_path).exists():
             weights_path = "yolov8n.pt"
         
-        model = YOLOv8nRefDet(
+        model = YOLORefDet(
             yolo_weights=weights_path,
             
         ).to(device)

@@ -24,7 +24,7 @@ import time
 # Add models directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from models.yolo_refdet import YOLOv8nRefDet
+from src.models.yolo_refdet import YOLORefDet
 
 
 class TestEndToEnd:
@@ -45,7 +45,7 @@ class TestEndToEnd:
     @pytest.fixture
     def model(self, device, weights_path):
         """Create model instance for testing"""
-        model = YOLOv8nRefDet(
+        model = YOLORefDet(
             yolo_weights=weights_path,
             dinov3_model="vit_small_patch14_reg4_dinov2",
             freeze_yolo=False,
@@ -369,7 +369,7 @@ class TestEndToEnd:
 def test_module_imports():
     """Test that end-to-end module can be imported"""
     try:
-        from models.yolo_refdet import YOLOv8nRefDet
+        from src.models.yolo_refdet import YOLORefDet
         print("✅ Module import successful")
     except ImportError as e:
         pytest.fail(f"Failed to import module: {e}")

@@ -14,7 +14,7 @@ from pathlib import Path
 from collections import defaultdict
 from typing import Dict, List
 
-from models.yolo_refdet import YOLOv8nRefDet
+from models.yolo_refdet import YOLORefDet
 from src.datasets.refdet_dataset import RefDetDataset
 from src.datasets.collate import refdet_collate_fn
 
@@ -168,7 +168,7 @@ def run_profiling(args):
     
     # Load model
     print("\nLoading model...")
-    model = YOLOv8nRefDet(
+    model = YOLORefDet(
         yolo_weights=args.yolo_weights,
         nc_base=80,
         freeze_yolo=args.stage >= 2,

@@ -17,7 +17,7 @@ from typing import Dict, List, Tuple
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from models.yolo_refdet import YOLOv8nRefDet
+from models.yolo_refdet import YOLORefDet
 from src.models.dino_encoder import DINOSupportEncoder
 from models.yolo_backbone import YOLOBackboneExtractor
 from src.models.psalm_fusion import PSALMFusion
@@ -213,7 +213,7 @@ def main():
     print("Initializing Model...")
     print("-"*80)
     
-    model = YOLOv8nRefDet(
+    model = YOLORefDet(
         yolo_weights=weights_path,
         nc_base=80,
         freeze_yolo=False,

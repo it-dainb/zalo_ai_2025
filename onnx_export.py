@@ -37,7 +37,7 @@ import onnxruntime as ort
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
-from src.models import YOLOv8nRefDet
+from src.models import YOLORefDet
 
 
 class ONNXExportWrapper(nn.Module):
@@ -52,7 +52,7 @@ class ONNXExportWrapper(nn.Module):
     
     def __init__(
         self,
-        model: YOLOv8nRefDet,
+        model: YOLORefDet,
         mode: str = 'dual',
         cache_support: bool = True,
     ):
@@ -117,7 +117,7 @@ class ONNXExportWrapper(nn.Module):
 
 
 def export_to_onnx(
-    model: YOLOv8nRefDet,
+    model: YOLORefDet,
     output_path: str,
     mode: str = 'dual',
     opset_version: int = 18,
@@ -300,7 +300,7 @@ def export_to_onnx(
 
 
 def validate_accuracy(
-    pytorch_model: YOLOv8nRefDet,
+    pytorch_model: YOLORefDet,
     onnx_path: str,
     mode: str = 'dual',
     num_samples: int = 10,
@@ -432,7 +432,7 @@ def main():
     
     # Load model
     print("Loading YOLOv8n-RefDet model...")
-    model = YOLOv8nRefDet(
+    model = YOLORefDet(
         yolo_weights='yolov8n.pt',
         nc_base=80,
         freeze_yolo=False,

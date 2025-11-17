@@ -16,7 +16,7 @@ sys.path.append(str(Path(__file__).parent))
 
 from src.datasets.refdet_dataset import RefDetDataset, EpisodicBatchSampler
 from src.datasets.collate import RefDetCollator
-from models.yolo_refdet import YOLOv8nRefDet
+from models.yolo_refdet import YOLORefDet
 from src.augmentations.augmentation_config import AugmentationConfig
 from src.training.logging_utils import setup_logger, get_experiment_name
 
@@ -204,7 +204,7 @@ def main():
     logger.info("Loading model...")
     checkpoint = torch.load(args.checkpoint, map_location=args.device)
     
-    model = YOLOv8nRefDet(
+    model = YOLORefDet(
         yolo_weights='yolov8n.pt',
     )
     model.load_state_dict(checkpoint['model_state_dict'])

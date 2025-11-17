@@ -14,7 +14,7 @@ import numpy as np
 import json
 import logging
 
-from models.yolo_refdet import YOLOv8nRefDet
+from src.models.yolo_refdet import YOLORefDet
 from src.losses.combined_loss import ReferenceBasedDetectionLoss
 from src.training.loss_utils import (
     prepare_loss_inputs,
@@ -42,6 +42,10 @@ def postprocess_model_outputs(
     """
     Post-process raw model outputs to extract final predictions.
     Follows ultralytics YOLOv8 inference pipeline.
+    
+    DEPRECATED: This function is kept for backward compatibility.
+    New code should use model.inference() instead, which calls the identical
+    _postprocess_detections() method internally.
     
     Args:
         model_outputs: Raw model outputs from YOLOv8nRefDet (prototype-only)
@@ -195,7 +199,7 @@ class RefDetTrainer:
     
     def __init__(
         self,
-        model: YOLOv8nRefDet,
+        model: YOLORefDet,
         loss_fn: ReferenceBasedDetectionLoss,
         optimizer: torch.optim.Optimizer,
         scheduler: Optional[torch.optim.lr_scheduler._LRScheduler] = None,
@@ -902,9 +906,9 @@ class RefDetTrainer:
                     n_support=K
                 )
                 
-                # Single forward pass for both loss and metrics
+                # Use inference API for cleaner evaluation flow
                 with autocast(device_type='cuda' if torch.cuda.is_available() else 'cpu', enabled=self.mixed_precision):
-                    # Get raw model outputs (prototype-only)
+                    # Get raw model outputs for loss computation
                     raw_outputs = self.model(
                         query_image=batch['query_images'],
                         use_cache=True,
@@ -934,18 +938,19 @@ class RefDetTrainer:
                 
                 # Compute detection metrics if requested
                 if compute_detection_metrics:
-                    # Post-process raw outputs to get final predictions
-                    # Use prototype head outputs for detection metrics
-                    model_outputs = postprocess_model_outputs(
+                    # Use model's post-processing method (avoids code duplication)
+                    # This reuses the same logic as inference() without requiring another forward pass
+                    inference_outputs = self.model._postprocess_detections(
                         raw_outputs,
                         conf_thres=0.25,
                         iou_thres=0.45,
+                        max_det=300,
                     )
                     
                     # Extract predictions (batch_size, num_boxes, 4/1/1)
-                    pred_bboxes = model_outputs['pred_bboxes'].cpu().numpy()  # (B, N, 4)
-                    pred_scores = model_outputs['pred_scores'].cpu().numpy()  # (B, N)
-                    pred_classes = model_outputs['pred_class_ids'].cpu().numpy()  # (B, N)
+                    pred_bboxes = inference_outputs['bboxes'].cpu().numpy()  # (B, N, 4)
+                    pred_scores = inference_outputs['scores'].cpu().numpy()  # (B, N)
+                    pred_classes = inference_outputs['class_ids'].cpu().numpy()  # (B, N)
                     
                     # Extract ground truth
                     gt_bboxes_list = [b.cpu().numpy() for b in batch['target_bboxes']]
@@ -1004,7 +1009,7 @@ class RefDetTrainer:
                         all_gt_classes.append(gt_classes_list[i])
                     
                     # Memory cleanup after detection metrics computation
-                    del model_outputs, pred_bboxes, pred_scores, pred_classes
+                    del inference_outputs, pred_bboxes, pred_scores, pred_classes
                     del gt_bboxes_list, gt_classes_list
                 
                 # Memory cleanup after each validation batch
@@ -1138,11 +1143,13 @@ class RefDetTrainer:
         support_flat = support_images.reshape(N * K, C, H, W)
         
         # Cache support features: compute N class prototypes (average K images per class)
+        # IMPORTANT: Use allow_gradients=True during training so DINO encoder receives gradients
         self.model.set_reference_images(
             support_flat,
             average_prototypes=True,
             n_way=N,
-            n_support=K
+            n_support=K,
+            allow_gradients=self.model.training,  # Enable gradients in training mode
         )
         
         # Forward pass with query images (prototype-only)
@@ -1151,6 +1158,11 @@ class RefDetTrainer:
             use_cache=True,  # Use cached support features
             class_ids=batch.get('class_ids', None),  # Pass class IDs for episodic learning
         )
+        
+        # Clear cache after batch to ensure fresh gradients in next batch
+        # This prevents stale DINO features from being reused across batches during training
+        if self.model.training:
+            self.model.clear_cache()
         
         if self.debug_mode:
             self.logger.debug(f"\nModel Outputs:")

@@ -26,7 +26,7 @@ from losses.bce_loss import BCEClassificationLoss
 from losses.supervised_contrastive_loss import SupervisedContrastiveLoss
 from losses.triplet_loss import TripletLoss
 from training.trainer import RefDetTrainer
-from models.yolo_refdet import YOLOv8nRefDet
+from src.models.yolo_refdet import YOLORefDet
 
 
 class TestLossComponents:
@@ -168,7 +168,7 @@ class TestOptimizer:
         if not Path(weights_path).exists():
             weights_path = "yolov8n.pt"
         
-        return YOLOv8nRefDet(
+        return YOLORefDet(
             yolo_weights=weights_path,
             
             freeze_yolo=False,
@@ -244,7 +244,7 @@ class TestTrainer:
         if not Path(weights_path).exists():
             weights_path = "yolov8n.pt"
         
-        return YOLOv8nRefDet(
+        return YOLORefDet(
             yolo_weights=weights_path,
             
             freeze_yolo=False,

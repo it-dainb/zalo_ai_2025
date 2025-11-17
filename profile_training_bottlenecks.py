@@ -33,7 +33,7 @@ import numpy as np
 
 from src.datasets.refdet_dataset import RefDetDataset, EpisodicBatchSampler
 from src.datasets.collate import RefDetCollator
-from models.yolo_refdet import YOLOv8nRefDet
+from models.yolo_refdet import YOLORefDet
 from src.losses.combined_loss import ReferenceBasedDetectionLoss
 from src.training.loss_utils import prepare_loss_inputs
 from src.augmentations import get_stage_config
@@ -220,7 +220,7 @@ def run_profiling(args):
     print("Setting up model...")
     print("-" * 80)
     
-    model = YOLOv8nRefDet().to(device)
+    model = YOLORefDet().to(device)
     
     model.eval()  # Eval mode for consistent timing
     
